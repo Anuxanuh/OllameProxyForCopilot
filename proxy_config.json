@@ -1,0 +1,10 @@
+{
+  "default_model": "gpt-4o",
+  "sources": {
+    "openai-main": {
+      "rule": "openai",
+      "base_url": "https://api.openai-compatible.example/v1",
+      "api_key": "sk-xxx"
+    }
+  }
+}
