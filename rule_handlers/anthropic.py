@@ -16,6 +16,83 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds") + "Z"
 
 
+def _as_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def _first_positive_int(item: Dict[str, Any], keys: tuple[str, ...]) -> int | None:
+    for key in keys:
+        parsed = _as_positive_int(item.get(key))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _find_positive_int_deep(value: Any, keys: set[str], depth: int = 0) -> int | None:
+    if depth > 5:
+        return None
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if str(key).lower() in keys:
+                parsed = _as_positive_int(nested)
+                if parsed is not None:
+                    return parsed
+        for nested in value.values():
+            parsed = _find_positive_int_deep(nested, keys, depth + 1)
+            if parsed is not None:
+                return parsed
+        return None
+    if isinstance(value, list):
+        for nested in value:
+            parsed = _find_positive_int_deep(nested, keys, depth + 1)
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _extract_upstream_model_meta(item: Dict[str, Any]) -> Dict[str, Any]:
+    meta: Dict[str, Any] = {"upstream": dict(item)}
+
+    context_length = _find_positive_int_deep(
+        item,
+        {
+            "context_length",
+            "context_window",
+            "max_context_length",
+            "max_input_tokens",
+            "input_token_limit",
+            "token_limit",
+            "max_model_len",
+            "max_sequence_length",
+            "num_ctx",
+            "n_ctx",
+            "max_tokens",
+        },
+    )
+    if context_length is not None:
+        meta["context_length"] = context_length
+
+    parameter_count = _first_positive_int(item, ("parameter_count", "params", "num_parameters"))
+    if parameter_count is not None:
+        meta["parameter_count"] = parameter_count
+
+    model_size = _first_positive_int(item, ("size", "model_size", "bytes"))
+    if model_size is not None:
+        meta["size"] = model_size
+
+    model_info = item.get("model_info")
+    if isinstance(model_info, dict):
+        meta["model_info"] = dict(model_info)
+
+    return meta
+
+
 def anthropic_stop_reason(stop_reason: str | None) -> str:
     if stop_reason in {"tool_use", "pause_turn"}:
         return "tool_calls"
@@ -711,7 +788,7 @@ class AnthropicRuleHandler(RuleHandler):
                     "name": model_id,
                     "upstream_model": model_id,
                     "aliases": [str(item.get("display_name") or "").strip()] if item.get("display_name") else [],
-                    "meta": {},
+                    "meta": _extract_upstream_model_meta(item),
                 }
             )
         return models

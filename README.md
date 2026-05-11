@@ -9,12 +9,14 @@
 - `openai`
 - `openai_compatible_partial`
 - `anthropic`
+- `deepseek`
 
 其中建议这样理解：
 
 - `openai`: 上游基本完整实现 OpenAI API，代理会按默认路径工作，并自动从 `/models` 发现模型。
 - `openai_compatible_partial`: 上游只兼容部分 OpenAI API，代理不会假设它支持完整模型查询等能力，因此需要你显式补 `models`。
 - `anthropic`: 上游基本完整实现 Anthropic Messages API，代理会按默认路径工作，并自动从 `/models` 发现模型。
+- `deepseek`: 符合 OpenAI API 规范的 DeepSeek 来源，代理会自动补足 `/models` 缺失的上下文长度字段（DeepSeek v4 系列默认 1M 上下文）。
 - `openai_aliyun`: 兼容旧配置的别名，内部等价于 `openai_compatible_partial`。
 
 后续如果要接第三种协议，不需要继续在主流程里堆分支，只需要新增一个 handler 文件并在注册表里注册。
@@ -79,6 +81,7 @@ http://127.0.0.1:11434
 {
 	"sources": {
 		"openai-main": {
+			"enable": true,
 			"rule": "openai",
 			"base_url": "https://api.openai-compatible.example/v1",
 			"api_key": "sk-xxx"
@@ -86,6 +89,8 @@ http://127.0.0.1:11434
 	}
 }
 ```
+
+`sources.<name>.enable` 是可选布尔值，默认 `true`。当设置为 `false` 时，该来源会在启动时被跳过，不参与模型发现、模型路由和请求转发。
 
 这类配置不需要手写 `paths`、`rule_config`、`models`。代理会自动使用：
 
@@ -100,6 +105,7 @@ http://127.0.0.1:11434
 	"default_model": "qwen3.6-plus",
 	"sources": {
 		"aliyun": {
+			"enable": true,
 			"rule": "openai_compatible_partial",
 			"base_url": "https://example.com/compatible-mode/v1",
 			"api_key": "your-api-key",
@@ -121,6 +127,7 @@ http://127.0.0.1:11434
 	"default_model": "claude-sonnet-4-20250514",
 	"sources": {
 		"anthropic-main": {
+			"enable": true,
 			"rule": "anthropic",
 			"base_url": "https://api.anthropic.com/v1",
 			"api_key": "sk-ant-xxx"

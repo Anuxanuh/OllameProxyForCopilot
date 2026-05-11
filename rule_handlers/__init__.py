@@ -4,11 +4,13 @@ from typing import Dict
 
 from .anthropic import AnthropicRuleHandler, RULE_ANTHROPIC
 from .base import RuleHandler
+from .deepseek import DeepSeekRuleHandler, RULE_DEEPSEEK
 from .openai import OpenAIRuleHandler, RULE_OPENAI, RULE_OPENAI_COMPATIBLE_PARTIAL
 
 
 _HANDLERS = [
     OpenAIRuleHandler(),
+    DeepSeekRuleHandler(),
     AnthropicRuleHandler(),
 ]
 RULE_HANDLER_REGISTRY: Dict[str, RuleHandler] = {}
@@ -28,6 +30,7 @@ def normalize_source_rule(rule_name: str | None) -> str:
         "openai_compatible": RULE_OPENAI_COMPATIBLE_PARTIAL,
         "openai": RULE_OPENAI,
         "openai_aliyun": RULE_OPENAI_COMPATIBLE_PARTIAL,
+        "deepseek": RULE_DEEPSEEK,
         "anthropic": RULE_ANTHROPIC,
     }
     normalized = aliases.get(candidate, candidate)

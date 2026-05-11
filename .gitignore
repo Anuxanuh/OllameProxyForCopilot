@@ -181,4 +181,4 @@ cython_debug/
 .cursorindexingignore
 
 # develop
-*.private
+*.private.json

@@ -62,6 +62,26 @@ def effective_capabilities(meta: Dict[str, Any], source_cfg: Dict[str, Any]) -> 
     return capabilities
 
 
+def merged_model_info(meta: Dict[str, Any], family: str) -> Dict[str, Any]:
+    context_length = meta.get("context_length", 8192)
+    info: Dict[str, Any] = {
+        "general.architecture": family,
+        "general.file_type": 2,
+        "general.parameter_count": meta.get("parameter_count", 7000000000),
+        "general.quantization_version": 2,
+        f"{family}.context_length": context_length,
+        "llama.context_length": context_length,
+        "tokenizer.ggml.model": "gpt2",
+        "tokenizer.ggml.bos_token_id": 1,
+        "tokenizer.ggml.eos_token_id": 2,
+    }
+
+    extra_model_info = meta.get("model_info")
+    if isinstance(extra_model_info, dict):
+        info.update(extra_model_info)
+    return info
+
+
 def register_model_alias(
     model_aliases: Dict[str, str],
     alias: str,
@@ -188,6 +208,12 @@ def load_proxy_config(config_path: Path) -> Dict[str, Any]:
     for source_name, source_cfg in sources.items():
         if not isinstance(source_cfg, dict):
             raise RuntimeError(f"source '{source_name}' must be an object")
+
+        source_enabled = source_cfg.get("enable", True)
+        if not isinstance(source_enabled, bool):
+            raise RuntimeError(f"source '{source_name}' enable must be a boolean")
+        if not source_enabled:
+            continue
 
         rule = normalize_source_rule(source_cfg.get("rule"))
         handler = get_rule_handler(rule)

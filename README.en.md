@@ -9,12 +9,14 @@ The proxy currently supports "source-based rule dispatching to handlers." This m
 - `openai`
 - `openai_compatible_partial`
 - `anthropic`
+- `deepseek`
 
 Recommended understanding:
 
 - `openai`: The upstream fully implements the OpenAI API. The proxy works with default paths and automatically discovers models from `/models`.
 - `openai_compatible_partial`: The upstream only partially supports the OpenAI API. The proxy won't assume full model query capabilities, so you need to explicitly provide `models`.
 - `anthropic`: The upstream fully implements the Anthropic Messages API. The proxy works with default paths and automatically discovers models from `/models`.
+- `deepseek`: A DeepSeek source compliant with the OpenAI API specification. The proxy automatically supplements the missing context length field in `/models` (DeepSeek v4 series default 1M context).
 - `openai_aliyun`: An alias for legacy configurations, internally equivalent to `openai_compatible_partial`.
 
 If you want to add a third protocol later, you don't need to keep adding branches in the main flow — just create a new handler file and register it.
@@ -79,6 +81,7 @@ Minimal configuration for a fully OpenAI-compatible source:
 {
 	"sources": {
 		"openai-main": {
+			"enable": true,
 			"rule": "openai",
 			"base_url": "https://api.openai-compatible.example/v1",
 			"api_key": "sk-xxx"
@@ -86,6 +89,8 @@ Minimal configuration for a fully OpenAI-compatible source:
 	}
 }
 ```
+
+`sources.<name>.enable` is an optional boolean and defaults to `true`. When set to `false`, that source is skipped at startup and will not participate in model discovery, model routing, or request forwarding.
 
 This type of configuration doesn't require manually writing `paths`, `rule_config`, or `models`. The proxy automatically uses:
 
@@ -100,6 +105,7 @@ If the upstream only partially supports the OpenAI API, switch to `openai_compat
 	"default_model": "qwen3.6-plus",
 	"sources": {
 		"aliyun": {
+			"enable": true,
 			"rule": "openai_compatible_partial",
 			"base_url": "https://example.com/compatible-mode/v1",
 			"api_key": "your-api-key",
@@ -121,6 +127,7 @@ Minimal configuration for a fully Anthropic-compatible source:
 	"default_model": "claude-sonnet-4-20250514",
 	"sources": {
 		"anthropic-main": {
+			"enable": true,
 			"rule": "anthropic",
 			"base_url": "https://api.anthropic.com/v1",
 			"api_key": "sk-ant-xxx"
