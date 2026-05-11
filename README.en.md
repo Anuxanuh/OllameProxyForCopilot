@@ -9,14 +9,21 @@ The proxy currently supports "source-based rule dispatching to handlers." This m
 - `openai`
 - `openai_compatible_partial`
 - `anthropic`
-- `deepseek`
+- `deepseek_anthropic`
+- `deepseek_openai`
 
 Recommended understanding:
 
 - `openai`: The upstream fully implements the OpenAI API. The proxy works with default paths and automatically discovers models from `/models`.
 - `openai_compatible_partial`: The upstream only partially supports the OpenAI API. The proxy won't assume full model query capabilities, so you need to explicitly provide `models`.
 - `anthropic`: The upstream fully implements the Anthropic Messages API. The proxy works with default paths and automatically discovers models from `/models`.
-- `deepseek`: A DeepSeek source handled internally through the Anthropic Messages API flow, which better fits DeepSeek's thinking / reasoning workflow. Model discovery remains automatic, but it reads DeepSeek's root `/models` endpoint and supplements the missing context length field (DeepSeek v4 series default 1M context).
+- `deepseek_anthropic`: A DeepSeek source routed internally through the Anthropic Messages API path. Model discovery still reads DeepSeek's root `/models` endpoint and fills in missing context length values (DeepSeek v4 series defaults to 1M context).
+- `deepseek_openai`: A DeepSeek source routed through the OpenAI-compatible chat path instead of Anthropic Messages. Model discovery still reads DeepSeek's root `/models` endpoint and fills in missing context length values.
+
+DeepSeek thinking and reasoning replay caches are persisted under the local `Logs` directory. After a proxy restart, the handler first tries to recover prior context; if a prior assistant turn cannot be replayed safely, the proxy trims that unreplayable assistant history instead of forwarding incomplete context upstream.
+
+At the business-logic level, this replay requirement is protocol-agnostic: both `deepseek_anthropic` and `deepseek_openai` must carry the prior reasoning payload into the next request. DeepSeek enforces continuity for thinking mode, while Copilot reaches this proxy via OpenAI-style requests, so the `reasoning_content` round-trip must remain valid on both DeepSeek routes.
+- `deepseek`: A backward-compatible alias for `deepseek_anthropic`.
 - `openai_aliyun`: An alias for legacy configurations, internally equivalent to `openai_compatible_partial`.
 
 If you want to add a third protocol later, you don't need to keep adding branches in the main flow — just create a new handler file and register it.
@@ -71,7 +78,9 @@ For `openai` rules, the proxy automatically requests the upstream `/models` endp
 
 For `anthropic` rules, the proxy also automatically requests the upstream `/models` endpoint. It defaults to including `x-api-key` and `anthropic-version` request headers, so standard Anthropic sources typically require minimal configuration.
 
-For DeepSeek, prefer the `deepseek` rule so the proxy can route requests through the Anthropic Messages API flow internally. Model discovery remains automatic through DeepSeek's root `/models` endpoint, which avoids the `reasoning_content` round-trip problem seen on OpenAI-compatible paths.
+For DeepSeek, use the `deepseek_anthropic` rule when the Anthropic Messages path and full thinking flow are required.
+
+Use `deepseek_openai` when an OpenAI-compatible path is preferred. This rule also replays and persists prior `reasoning_content`, so conversation continuity survives proxy restarts. Set `base_url` to the DeepSeek OpenAI root endpoint, for example `https://api.deepseek.com`.
 
 ## Configuration Structure
 

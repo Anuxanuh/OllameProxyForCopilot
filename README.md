@@ -9,14 +9,21 @@
 - `openai`
 - `openai_compatible_partial`
 - `anthropic`
-- `deepseek`
+- `deepseek_anthropic`
+- `deepseek_openai`
 
 其中建议这样理解：
 
 - `openai`: 上游基本完整实现 OpenAI API，代理会按默认路径工作，并自动从 `/models` 发现模型。
 - `openai_compatible_partial`: 上游只兼容部分 OpenAI API，代理不会假设它支持完整模型查询等能力，因此需要你显式补 `models`。
 - `anthropic`: 上游基本完整实现 Anthropic Messages API，代理会按默认路径工作，并自动从 `/models` 发现模型。
-- `deepseek`: DeepSeek 来源，内部按 Anthropic Messages API 方式转发，更适合 DeepSeek 的 thinking / reasoning 流程；模型发现仍然自动进行，但会读取 DeepSeek 主域的 `/models`，并自动补足缺失的上下文长度字段（DeepSeek v4 系列默认 1M 上下文）。
+- `deepseek_anthropic`: DeepSeek 来源，内部按 Anthropic Messages API 路径转发；模型发现仍会读取 DeepSeek 主域的 `/models`，并为缺失上下文长度字段的模型补足默认值（DeepSeek v4 系列默认 1M 上下文）。
+- `deepseek_openai`: DeepSeek 来源，走 OpenAI 兼容聊天路径；模型发现同样读取 DeepSeek 主域的 `/models`，并补足缺失的上下文长度字段。
+
+DeepSeek 的 thinking 与 reasoning 回放缓存会持久化到本地 `Logs` 目录。代理重启后会优先尝试补回历史上下文；如果历史消息无法安全回放，则会裁剪不可重放的 assistant 历史，避免把不完整上下文继续转发到上游。
+
+这套回放机制在业务上是“跨协议统一”的：无论来源最终走 `deepseek_anthropic` 还是 `deepseek_openai`，都需要把上一轮的推理内容原样带回下一轮请求。原因是 DeepSeek 对 thinking 模式有连续上下文约束；而 Copilot 进入本代理时走的是 OpenAI 风格接口，因此 `reasoning_content` 的回传能力需要在两条 DeepSeek 规则上同时成立。
+- `deepseek`: 兼容旧配置的别名，内部等价于 `deepseek_anthropic`。
 - `openai_aliyun`: 兼容旧配置的别名，内部等价于 `openai_compatible_partial`。
 
 后续如果要接第三种协议，不需要继续在主流程里堆分支，只需要新增一个 handler 文件并在注册表里注册。
@@ -71,7 +78,9 @@ http://127.0.0.1:11434
 
 对于 `anthropic` 规则，代理也会自动请求上游的 `/models`；同时默认附带 `x-api-key` 和 `anthropic-version` 请求头，因此标准 Anthropic 来源通常也只需要最少配置。
 
-对于 DeepSeek，建议使用 `deepseek` 规则，让代理内部按 Anthropic Messages API 路径处理；模型发现会自动使用 DeepSeek 主域的 `/models`，这样可以避免 OpenAI 兼容路径下的 `reasoning_content` 回传问题。
+对于 DeepSeek，需要 Anthropic Messages 路径和完整 thinking 流程时，可使用 `deepseek_anthropic` 规则。
+
+需要走 OpenAI 兼容接口时，可使用 `deepseek_openai`。这条规则同样会回放并持久化历史 `reasoning_content`，保证代理重启后仍可延续同一会话链路；建议把 `base_url` 配成 DeepSeek OpenAI 根地址，例如 `https://api.deepseek.com`。
 
 ## 配置结构
 

@@ -8,7 +8,10 @@ from typing import Any, Dict
 from fastapi import HTTPException, Request, status
 
 
+# ==================== 请求工具函数 ====================
+
 def safe_text_preview(raw: bytes, limit: int = 240) -> str:
+    """将原始字节安全地转为文本预览（用于日志记录），超长部分截断加省略号"""
     text = raw.decode("utf-8", errors="replace").replace("\n", "\\n")
     if len(text) <= limit:
         return text
@@ -16,6 +19,7 @@ def safe_text_preview(raw: bytes, limit: int = 240) -> str:
 
 
 def flatten_options(body: Dict[str, Any], payload: Dict[str, Any]) -> None:
+    """将 Ollama 风格的 options 子字段平铺到 payload 顶层，同时复制 stream/keep_alive 等字段"""
     options = body.get("options") or {}
     for key in [
         "temperature",
@@ -51,7 +55,7 @@ async def parse_request_json(
     *,
     allow_empty: bool = False,
 ) -> Dict[str, Any]:
-    """Parse request body as JSON with a safe fallback for single-quoted dict payloads."""
+    """解析请求体为 JSON，遇到单引号 dict 时降级使用 ast.literal_eval 兜底"""
     raw = await request.body()
     if not raw:
         if allow_empty:

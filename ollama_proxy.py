@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from logging.handlers import TimedRotatingFileHandler
 
 from fastapi import FastAPI
 
@@ -14,10 +15,35 @@ from proxy_core.routes import (
 
 app = FastAPI(title="Ollama-Compatible Proxy")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-)
+def configure_logging() -> None:
+    logs_dir = Path(__file__).with_name("Logs")
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+
+    file_handler = TimedRotatingFileHandler(
+        filename=str(logs_dir / "ollama_proxy.log"),
+        when="H",
+        interval=1,
+        backupCount=168,
+        encoding="utf-8",
+    )
+    file_handler.suffix = "%Y-%m-%d_%H.log"
+    file_handler.setFormatter(formatter)
+
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+
+
+configure_logging()
 logger = logging.getLogger("ollama_proxy")
 
 CONFIG_PATH = Path(__file__).with_name("proxy_config.json")

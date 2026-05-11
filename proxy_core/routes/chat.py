@@ -12,6 +12,55 @@ from proxy_core.state import ProxyState
 from rule_handlers.base import require_rule_capability
 
 
+_COPILOT_V1_MAX_TOKENS = 1024
+
+
+def _parse_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def _clamp_copilot_v1_max_tokens(request: Request, body: Dict[str, Any], logger) -> None:
+    user_agent = str(request.headers.get("user-agent") or "").lower()
+    if "copilot" not in user_agent and "vscode" not in user_agent:
+        return
+
+    requested = None
+    requested_key = None
+    for key in ("max_completion_tokens", "max_tokens", "num_predict"):
+        parsed = _parse_positive_int(body.get(key))
+        if parsed is not None:
+            requested = parsed
+            requested_key = key
+            break
+
+    if requested is None:
+        body["max_tokens"] = _COPILOT_V1_MAX_TOKENS
+        logger.info("v1/chat/completions applied copilot max_tokens=%s", _COPILOT_V1_MAX_TOKENS)
+        return
+
+    if requested <= _COPILOT_V1_MAX_TOKENS:
+        return
+
+    for key in ("max_completion_tokens", "max_tokens", "num_predict"):
+        if key in body:
+            body[key] = _COPILOT_V1_MAX_TOKENS
+    if requested_key == "max_completion_tokens" and "max_tokens" not in body:
+        body["max_tokens"] = _COPILOT_V1_MAX_TOKENS
+
+    logger.info(
+        "v1/chat/completions clamped copilot %s from=%s to=%s",
+        requested_key,
+        requested,
+        _COPILOT_V1_MAX_TOKENS,
+    )
+
+
 def create_chat_router(state: ProxyState, logger) -> APIRouter:
     router = APIRouter()
 
@@ -151,6 +200,7 @@ def create_chat_router(state: ProxyState, logger) -> APIRouter:
     @router.post("/v1/chat/completions")
     async def v1_chat_completions(request: Request) -> Any:
         body = await parse_request_json(request, logger)
+        _clamp_copilot_v1_max_tokens(request, body, logger)
         model_cfg = await state.resolve_model_config(body.get("model"))
         source_cfg = state.resolve_source_config(model_cfg["source"])
         handler = source_cfg["handler"]
