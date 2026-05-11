@@ -16,7 +16,7 @@ Recommended understanding:
 - `openai`: The upstream fully implements the OpenAI API. The proxy works with default paths and automatically discovers models from `/models`.
 - `openai_compatible_partial`: The upstream only partially supports the OpenAI API. The proxy won't assume full model query capabilities, so you need to explicitly provide `models`.
 - `anthropic`: The upstream fully implements the Anthropic Messages API. The proxy works with default paths and automatically discovers models from `/models`.
-- `deepseek`: A DeepSeek source compliant with the OpenAI API specification. The proxy automatically supplements the missing context length field in `/models` (DeepSeek v4 series default 1M context).
+- `deepseek`: A DeepSeek source handled internally through the Anthropic Messages API flow, which better fits DeepSeek's thinking / reasoning workflow. Model discovery remains automatic, but it reads DeepSeek's root `/models` endpoint and supplements the missing context length field (DeepSeek v4 series default 1M context).
 - `openai_aliyun`: An alias for legacy configurations, internally equivalent to `openai_compatible_partial`.
 
 If you want to add a third protocol later, you don't need to keep adding branches in the main flow — just create a new handler file and register it.
@@ -70,6 +70,8 @@ The proxy is compatible with both query endpoints. For backward compatibility wi
 For `openai` rules, the proxy automatically requests the upstream `/models` endpoint on first use and caches the result locally. This means fully OpenAI-compatible sources usually don't require manually written `models`.
 
 For `anthropic` rules, the proxy also automatically requests the upstream `/models` endpoint. It defaults to including `x-api-key` and `anthropic-version` request headers, so standard Anthropic sources typically require minimal configuration.
+
+For DeepSeek, prefer the `deepseek` rule so the proxy can route requests through the Anthropic Messages API flow internally. Model discovery remains automatic through DeepSeek's root `/models` endpoint, which avoids the `reasoning_content` round-trip problem seen on OpenAI-compatible paths.
 
 ## Configuration Structure
 

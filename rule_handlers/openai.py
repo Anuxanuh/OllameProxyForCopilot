@@ -142,6 +142,7 @@ class OpenAIRuleHandler(RuleHandler):
                 if response.status_code >= 400:
                     await response.aread()
                     raise make_http_error(response)
+                reasoning_content = ""
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -154,13 +155,23 @@ class OpenAIRuleHandler(RuleHandler):
                         continue
                     choice = chunk.get("choices", [{}])[0]
                     delta = choice.get("delta", {})
-                    content = delta.get("content") or ""
+                    content = delta.get("content") or choice.get("text") or ""
+                    chunk_reasoning = delta.get("reasoning_content")
+                    if not chunk_reasoning:
+                        message = choice.get("message", {})
+                        if isinstance(message, dict):
+                            chunk_reasoning = message.get("reasoning_content")
+                    if isinstance(chunk_reasoning, str) and chunk_reasoning:
+                        reasoning_content += chunk_reasoning
                     finish_reason = choice.get("finish_reason")
                     done = finish_reason is not None
+                    message: Dict[str, Any] = {"role": "assistant", "content": content}
+                    if reasoning_content:
+                        message["reasoning_content"] = reasoning_content
                     obj: Dict[str, Any] = {
                         "model": model,
                         "created_at": now_iso(),
-                        "message": {"role": "assistant", "content": content},
+                        "message": message,
                         "done": done,
                     }
                     if done:

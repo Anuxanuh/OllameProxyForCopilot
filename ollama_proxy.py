@@ -806,6 +806,7 @@ async def chat(request: Request) -> Any:
 
     # Non-streaming: consume SSE via the same generator and assemble final response
     full_content = ""
+    reasoning_content = ""
     prompt_tokens = 0
     completion_tokens = 0
     tool_calls: List[Dict[str, Any]] = []
@@ -814,6 +815,7 @@ async def chat(request: Request) -> Any:
         obj = json.loads(line_json)
         message = obj.get("message") or {}
         full_content += message.get("content") or ""
+        reasoning_content += message.get("reasoning_content") or ""
         for tool_call in message.get("tool_calls") or []:
             if isinstance(tool_call, dict):
                 tool_calls.append(tool_call)
@@ -823,6 +825,8 @@ async def chat(request: Request) -> Any:
             done_reason = str(obj.get("done_reason") or done_reason)
 
     response_message: Dict[str, Any] = {"role": "assistant", "content": full_content}
+    if reasoning_content:
+        response_message["reasoning_content"] = reasoning_content
     if tool_calls:
         response_message["tool_calls"] = tool_calls
 

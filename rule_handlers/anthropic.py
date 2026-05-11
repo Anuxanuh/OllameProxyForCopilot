@@ -163,7 +163,7 @@ def text_content_blocks(content: Any) -> list[Dict[str, Any]]:
             text = str(item.get("text") or "")
             if text:
                 blocks.append({"type": "text", "text": text})
-        elif item_type in {"tool_use", "tool_result"}:
+        elif item_type in {"tool_use", "tool_result", "thinking", "redacted_thinking"}:
             blocks.append(dict(item))
     return blocks
 
@@ -190,46 +190,119 @@ def split_system_and_messages(messages: Any) -> tuple[str, list[Dict[str, Any]]]
     if not isinstance(messages, list):
         return "", []
 
+    def dedupe_tool_use_blocks(blocks: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+        seen_tool_use_ids: set[str] = set()
+        deduped: list[Dict[str, Any]] = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if str(block.get("type") or "") != "tool_use":
+                deduped.append(block)
+                continue
+            tool_use_id = str(block.get("id") or "").strip()
+            if not tool_use_id:
+                deduped.append(block)
+                continue
+            if tool_use_id in seen_tool_use_ids:
+                continue
+            seen_tool_use_ids.add(tool_use_id)
+            deduped.append(block)
+        return deduped
+
+    def collect_following_tool_result_ids(start_index: int) -> set[str]:
+        tool_result_ids: set[str] = set()
+        index = start_index + 1
+        while index < len(messages):
+            following = messages[index]
+            if not isinstance(following, dict):
+                index += 1
+                continue
+            if str(following.get("role") or "user") != "tool":
+                break
+            tool_result_id = str(following.get("tool_call_id") or "").strip()
+            if tool_result_id:
+                tool_result_ids.add(tool_result_id)
+            index += 1
+        return tool_result_ids
+
+    def filter_assistant_tool_use_blocks(
+        blocks: list[Dict[str, Any]],
+        allowed_tool_ids: set[str],
+    ) -> list[Dict[str, Any]]:
+        filtered: list[Dict[str, Any]] = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if str(block.get("type") or "") != "tool_use":
+                filtered.append(block)
+                continue
+            block_id = str(block.get("id") or "").strip()
+            if block_id and block_id in allowed_tool_ids:
+                filtered.append(block)
+        return filtered
+
     system_parts: list[str] = []
     anthropic_messages: list[Dict[str, Any]] = []
     tool_counter = 0
-    for message in messages:
+    index = 0
+    while index < len(messages):
+        message = messages[index]
         if not isinstance(message, dict):
+            index += 1
             continue
+
         role = str(message.get("role") or "user")
         content = message.get("content")
+
         if role == "system":
             text = extract_text_from_content(content)
             if text:
                 system_parts.append(text)
+            index += 1
             continue
+
         if role == "tool":
-            tool_use_id = str(message.get("tool_call_id") or "").strip()
-            if not tool_use_id:
-                continue
-            anthropic_messages.append(
-                {
-                    "role": "user",
-                    "content": [
+            # Anthropic requires tool_result blocks to be grouped in the immediate next user message.
+            tool_result_blocks: list[Dict[str, Any]] = []
+            while index < len(messages):
+                tool_message = messages[index]
+                if not isinstance(tool_message, dict):
+                    index += 1
+                    continue
+                if str(tool_message.get("role") or "user") != "tool":
+                    break
+
+                tool_use_id = str(tool_message.get("tool_call_id") or "").strip()
+                if tool_use_id:
+                    tool_result_blocks.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_use_id,
-                            "content": extract_text_from_content(content),
+                            "content": extract_text_from_content(tool_message.get("content")),
                         }
-                    ],
-                }
-            )
+                    )
+                index += 1
+
+            if tool_result_blocks:
+                anthropic_messages.append({"role": "user", "content": tool_result_blocks})
             continue
 
         blocks = text_content_blocks(content)
         if role == "assistant":
+            following_tool_result_ids = collect_following_tool_result_ids(index)
+            blocks = filter_assistant_tool_use_blocks(blocks, following_tool_result_ids)
             tool_calls = message.get("tool_calls") or []
             if isinstance(tool_calls, list):
                 for tool_call in tool_calls:
                     tool_block = openai_tool_call_to_anthropic_block(tool_call, f"toolu_{tool_counter}")
                     tool_counter += 1
-                    if tool_block:
-                        blocks.append(tool_block)
+                    if not tool_block:
+                        continue
+                    if not following_tool_result_ids:
+                        continue
+                    if str(tool_block.get("id") or "").strip() not in following_tool_result_ids:
+                        continue
+                    blocks.append(tool_block)
 
         if not blocks:
             text = extract_text_from_content(content)
@@ -238,8 +311,15 @@ def split_system_and_messages(messages: Any) -> tuple[str, list[Dict[str, Any]]]
         if not blocks:
             continue
 
+        if role == "assistant":
+            blocks = dedupe_tool_use_blocks(blocks)
+            if not blocks:
+                continue
+
         anthropic_role = "assistant" if role == "assistant" else "user"
         anthropic_messages.append({"role": anthropic_role, "content": blocks})
+        index += 1
+
     return "\n\n".join(part for part in system_parts if part), anthropic_messages
 
 
@@ -398,18 +478,27 @@ class AnthropicRuleHandler(RuleHandler):
     def supports_model_discovery(self, source_cfg: SourceConfig) -> bool:
         return True
 
+    def _inject_cached_thinking(self, source_cfg: SourceConfig, payload: Dict[str, Any]) -> None:
+        return
+
+    def _remember_cached_thinking(self, source_cfg: SourceConfig, model: str, blocks: Any) -> None:
+        return
+
     async def proxy_json(self, source_cfg: SourceConfig, path_key: str, body: Dict[str, Any]) -> Any:
         if path_key != "chat_completions":
             raise make_http_error(
                 httpx.Response(status_code=501, request=httpx.Request("POST", source_url(source_cfg, path_key)), text="unsupported path")
             )
+        self._inject_cached_thinking(source_cfg, body)
         anthropic_payload = build_anthropic_payload(body)
         url = source_url(source_cfg, path_key)
         async with httpx.AsyncClient(timeout=source_cfg["timeout"]) as client:
             response = await client.post(url, headers=source_headers(source_cfg), json=anthropic_payload)
             if response.status_code >= 400:
                 raise make_http_error(response)
-            return response.json()
+            data = response.json()
+            self._remember_cached_thinking(source_cfg, str(body.get("model") or ""), data.get("content"))
+            return data
 
     async def stream_chat_to_ollama(
         self,
@@ -417,6 +506,7 @@ class AnthropicRuleHandler(RuleHandler):
         model: str,
         payload: Dict[str, Any],
     ) -> AsyncIterator[str]:
+        self._inject_cached_thinking(source_cfg, payload)
         anthropic_payload = build_anthropic_payload(payload)
         anthropic_payload["stream"] = True
         url = source_url(source_cfg, "chat_completions")
@@ -424,6 +514,7 @@ class AnthropicRuleHandler(RuleHandler):
         completion_tokens = 0
         stop_reason: str | None = None
         tool_buffers: Dict[int, Dict[str, Any]] = {}
+        content_blocks: Dict[int, Dict[str, Any]] = {}
 
         async with httpx.AsyncClient(timeout=source_cfg["timeout"]) as client:
             async with client.stream("POST", url, headers=source_headers(source_cfg), json=anthropic_payload) as response:
@@ -447,6 +538,8 @@ class AnthropicRuleHandler(RuleHandler):
                     elif chunk_type == "content_block_start":
                         block_index = int(chunk.get("index") or 0)
                         block = chunk.get("content_block") or {}
+                        if isinstance(block, dict):
+                            content_blocks[block_index] = dict(block)
                         if isinstance(block, dict) and block.get("type") == "tool_use":
                             raw_input = block.get("input")
                             tool_buffers[block_index] = {
@@ -459,6 +552,19 @@ class AnthropicRuleHandler(RuleHandler):
                     elif chunk_type == "content_block_delta":
                         block_index = int(chunk.get("index") or 0)
                         delta = chunk.get("delta") or {}
+                        block = content_blocks.get(block_index)
+                        if isinstance(block, dict):
+                            block_type = str(block.get("type") or "")
+                            delta_type = str(delta.get("type") or "")
+                            if block_type == "text" and delta_type == "text_delta":
+                                block["text"] = str(block.get("text") or "") + str(delta.get("text") or "")
+                            elif block_type in {"thinking", "redacted_thinking"}:
+                                if "thinking" in delta:
+                                    key = "thinking"
+                                    block[key] = str(block.get(key) or "") + str(delta.get("thinking") or "")
+                                if "data" in delta:
+                                    key = "data"
+                                    block[key] = str(block.get(key) or "") + str(delta.get("data") or "")
                         if delta.get("type") == "text_delta":
                             content = delta.get("text") or ""
                             yield json.dumps(
@@ -502,6 +608,8 @@ class AnthropicRuleHandler(RuleHandler):
                         completion_tokens = usage.get("output_tokens", completion_tokens)
                         stop_reason = delta.get("stop_reason", stop_reason)
                     elif chunk_type == "message_stop":
+                        ordered_blocks = [content_blocks[idx] for idx in sorted(content_blocks)]
+                        self._remember_cached_thinking(source_cfg, str(payload.get("model") or ""), ordered_blocks)
                         yield json.dumps(
                             {
                                 "model": model,
@@ -525,6 +633,7 @@ class AnthropicRuleHandler(RuleHandler):
         model: str,
         payload: Dict[str, Any],
     ) -> AsyncIterator[str]:
+        self._inject_cached_thinking(source_cfg, payload)
         anthropic_payload = build_anthropic_payload(payload)
         anthropic_payload["stream"] = True
         url = source_url(source_cfg, "chat_completions")
@@ -593,6 +702,7 @@ class AnthropicRuleHandler(RuleHandler):
         display_model: str,
         payload: Dict[str, Any],
     ) -> AsyncIterator[bytes]:
+        self._inject_cached_thinking(source_cfg, payload)
         anthropic_payload = build_anthropic_payload(payload)
         anthropic_payload["stream"] = True
         url = source_url(source_cfg, "chat_completions")
@@ -600,12 +710,22 @@ class AnthropicRuleHandler(RuleHandler):
         created = int(time.time())
         finish_reason: str | None = None
         tool_call_indexes: Dict[int, int] = {}
+        content_blocks: Dict[int, Dict[str, Any]] = {}
 
         async with httpx.AsyncClient(timeout=source_cfg["timeout"]) as client:
             async with client.stream("POST", url, headers=source_headers(source_cfg), json=anthropic_payload) as response:
                 if response.status_code >= 400:
-                    await response.aread()
-                    raise make_http_error(response)
+                    error_text = (await response.aread()).decode("utf-8", errors="replace")
+                    error_payload = {
+                        "error": {
+                            "message": error_text,
+                            "type": "upstream_error",
+                            "code": response.status_code,
+                        }
+                    }
+                    yield ("data: " + json.dumps(error_payload, ensure_ascii=False) + "\n\n").encode()
+                    yield b"data: [DONE]\n\n"
+                    return
                 yield (
                     "data: "
                     + json.dumps(
@@ -634,6 +754,8 @@ class AnthropicRuleHandler(RuleHandler):
                     if chunk_type == "content_block_start":
                         block_index = int(chunk.get("index") or 0)
                         block = chunk.get("content_block") or {}
+                        if isinstance(block, dict):
+                            content_blocks[block_index] = dict(block)
                         if isinstance(block, dict) and block.get("type") == "tool_use":
                             tool_index = len(tool_call_indexes)
                             tool_call_indexes[block_index] = tool_index
@@ -667,6 +789,19 @@ class AnthropicRuleHandler(RuleHandler):
                     elif chunk_type == "content_block_delta":
                         block_index = int(chunk.get("index") or 0)
                         delta = chunk.get("delta") or {}
+                        block = content_blocks.get(block_index)
+                        if isinstance(block, dict):
+                            block_type = str(block.get("type") or "")
+                            delta_type = str(delta.get("type") or "")
+                            if block_type == "text" and delta_type == "text_delta":
+                                block["text"] = str(block.get("text") or "") + str(delta.get("text") or "")
+                            elif block_type in {"thinking", "redacted_thinking"}:
+                                if "thinking" in delta:
+                                    key = "thinking"
+                                    block[key] = str(block.get(key) or "") + str(delta.get("thinking") or "")
+                                if "data" in delta:
+                                    key = "data"
+                                    block[key] = str(block.get(key) or "") + str(delta.get("data") or "")
                         if delta.get("type") == "text_delta":
                             content = delta.get("text") or ""
                             yield (
@@ -719,6 +854,8 @@ class AnthropicRuleHandler(RuleHandler):
                         delta = chunk.get("delta") or {}
                         finish_reason = openai_finish_reason(delta.get("stop_reason", finish_reason))
                     elif chunk_type == "message_stop":
+                        ordered_blocks = [content_blocks[idx] for idx in sorted(content_blocks)]
+                        self._remember_cached_thinking(source_cfg, str(payload.get("model") or ""), ordered_blocks)
                         yield (
                             "data: "
                             + json.dumps(
@@ -741,7 +878,9 @@ class AnthropicRuleHandler(RuleHandler):
         display_model: str,
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
+        self._inject_cached_thinking(source_cfg, payload)
         data = await self.proxy_json(source_cfg, "chat_completions", payload)
+        self._remember_cached_thinking(source_cfg, str(payload.get("model") or ""), data.get("content"))
         text, usage, stop_reason = anthropic_text_and_usage(data)
         prompt_tokens = usage.get("input_tokens", 0)
         completion_tokens = usage.get("output_tokens", 0)

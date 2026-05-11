@@ -16,7 +16,7 @@
 - `openai`: 上游基本完整实现 OpenAI API，代理会按默认路径工作，并自动从 `/models` 发现模型。
 - `openai_compatible_partial`: 上游只兼容部分 OpenAI API，代理不会假设它支持完整模型查询等能力，因此需要你显式补 `models`。
 - `anthropic`: 上游基本完整实现 Anthropic Messages API，代理会按默认路径工作，并自动从 `/models` 发现模型。
-- `deepseek`: 符合 OpenAI API 规范的 DeepSeek 来源，代理会自动补足 `/models` 缺失的上下文长度字段（DeepSeek v4 系列默认 1M 上下文）。
+- `deepseek`: DeepSeek 来源，内部按 Anthropic Messages API 方式转发，更适合 DeepSeek 的 thinking / reasoning 流程；模型发现仍然自动进行，但会读取 DeepSeek 主域的 `/models`，并自动补足缺失的上下文长度字段（DeepSeek v4 系列默认 1M 上下文）。
 - `openai_aliyun`: 兼容旧配置的别名，内部等价于 `openai_compatible_partial`。
 
 后续如果要接第三种协议，不需要继续在主流程里堆分支，只需要新增一个 handler 文件并在注册表里注册。
@@ -70,6 +70,8 @@ http://127.0.0.1:11434
 对于 `openai` 规则，代理会在第一次需要模型信息时自动请求上游的 `/models`，然后把结果缓存到本地注册表。也就是说，完整 OpenAI 兼容源通常不需要手写 `models`。
 
 对于 `anthropic` 规则，代理也会自动请求上游的 `/models`；同时默认附带 `x-api-key` 和 `anthropic-version` 请求头，因此标准 Anthropic 来源通常也只需要最少配置。
+
+对于 DeepSeek，建议使用 `deepseek` 规则，让代理内部按 Anthropic Messages API 路径处理；模型发现会自动使用 DeepSeek 主域的 `/models`，这样可以避免 OpenAI 兼容路径下的 `reasoning_content` 回传问题。
 
 ## 配置结构
 
