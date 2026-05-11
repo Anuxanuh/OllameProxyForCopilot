@@ -713,149 +713,11 @@ class AnthropicRuleHandler(RuleHandler):
         content_blocks: Dict[int, Dict[str, Any]] = {}
 
         async with httpx.AsyncClient(timeout=source_cfg["timeout"]) as client:
-            async with client.stream("POST", url, headers=source_headers(source_cfg), json=anthropic_payload) as response:
-                if response.status_code >= 400:
-                    error_text = (await response.aread()).decode("utf-8", errors="replace")
-                    error_payload = {
-                        "error": {
-                            "message": error_text,
-                            "type": "upstream_error",
-                            "code": response.status_code,
-                        }
-                    }
-                    yield ("data: " + json.dumps(error_payload, ensure_ascii=False) + "\n\n").encode()
-                    yield b"data: [DONE]\n\n"
-                    return
-                yield (
-                    "data: "
-                    + json.dumps(
-                        {
-                            "id": message_id,
-                            "object": "chat.completion.chunk",
-                            "created": created,
-                            "model": display_model,
-                            "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n\n"
-                ).encode()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data_text = line[6:].strip()
-                    if not data_text:
-                        continue
-                    try:
-                        chunk = json.loads(data_text)
-                    except Exception:
-                        continue
-                    chunk_type = chunk.get("type")
-                    if chunk_type == "content_block_start":
-                        block_index = int(chunk.get("index") or 0)
-                        block = chunk.get("content_block") or {}
-                        if isinstance(block, dict):
-                            content_blocks[block_index] = dict(block)
-                        if isinstance(block, dict) and block.get("type") == "tool_use":
-                            tool_index = len(tool_call_indexes)
-                            tool_call_indexes[block_index] = tool_index
-                            delta_payload = {
-                                "tool_calls": [
-                                    {
-                                        "index": tool_index,
-                                        "id": str(block.get("id") or f"toolu_{tool_index}"),
-                                        "type": "function",
-                                        "function": {
-                                            "name": str(block.get("name") or ""),
-                                            "arguments": "",
-                                        },
-                                    }
-                                ]
-                            }
-                            yield (
-                                "data: "
-                                + json.dumps(
-                                    {
-                                        "id": message_id,
-                                        "object": "chat.completion.chunk",
-                                        "created": created,
-                                        "model": display_model,
-                                        "choices": [{"index": 0, "delta": delta_payload, "finish_reason": None}],
-                                    },
-                                    ensure_ascii=False,
-                                )
-                                + "\n\n"
-                            ).encode()
-                    elif chunk_type == "content_block_delta":
-                        block_index = int(chunk.get("index") or 0)
-                        delta = chunk.get("delta") or {}
-                        block = content_blocks.get(block_index)
-                        if isinstance(block, dict):
-                            block_type = str(block.get("type") or "")
-                            delta_type = str(delta.get("type") or "")
-                            if block_type == "text" and delta_type == "text_delta":
-                                block["text"] = str(block.get("text") or "") + str(delta.get("text") or "")
-                            elif block_type in {"thinking", "redacted_thinking"}:
-                                if "thinking" in delta:
-                                    key = "thinking"
-                                    block[key] = str(block.get(key) or "") + str(delta.get("thinking") or "")
-                                if "data" in delta:
-                                    key = "data"
-                                    block[key] = str(block.get(key) or "") + str(delta.get("data") or "")
-                        if delta.get("type") == "text_delta":
-                            content = delta.get("text") or ""
-                            yield (
-                                "data: "
-                                + json.dumps(
-                                    {
-                                        "id": message_id,
-                                        "object": "chat.completion.chunk",
-                                        "created": created,
-                                        "model": display_model,
-                                        "choices": [
-                                            {"index": 0, "delta": {"content": content}, "finish_reason": None}
-                                        ],
-                                    },
-                                    ensure_ascii=False,
-                                )
-                                + "\n\n"
-                            ).encode()
-                        elif delta.get("type") == "input_json_delta" and block_index in tool_call_indexes:
-                            yield (
-                                "data: "
-                                + json.dumps(
-                                    {
-                                        "id": message_id,
-                                        "object": "chat.completion.chunk",
-                                        "created": created,
-                                        "model": display_model,
-                                        "choices": [
-                                            {
-                                                "index": 0,
-                                                "delta": {
-                                                    "tool_calls": [
-                                                        {
-                                                            "index": tool_call_indexes[block_index],
-                                                            "function": {
-                                                                "arguments": str(delta.get("partial_json") or ""),
-                                                            },
-                                                        }
-                                                    ]
-                                                },
-                                                "finish_reason": None,
-                                            }
-                                        ],
-                                    },
-                                    ensure_ascii=False,
-                                )
-                                + "\n\n"
-                            ).encode()
-                    elif chunk_type == "message_delta":
-                        delta = chunk.get("delta") or {}
-                        finish_reason = openai_finish_reason(delta.get("stop_reason", finish_reason))
-                    elif chunk_type == "message_stop":
-                        ordered_blocks = [content_blocks[idx] for idx in sorted(content_blocks)]
-                        self._remember_cached_thinking(source_cfg, str(payload.get("model") or ""), ordered_blocks)
+            try:
+                async with client.stream("POST", url, headers=source_headers(source_cfg), json=anthropic_payload) as response:
+                    if response.status_code >= 400:
+                        error_text = (await response.aread()).decode("utf-8", errors="replace")
+                        safe_error_text = error_text.strip() or f"upstream returned HTTP {response.status_code}"
                         yield (
                             "data: "
                             + json.dumps(
@@ -864,13 +726,217 @@ class AnthropicRuleHandler(RuleHandler):
                                     "object": "chat.completion.chunk",
                                     "created": created,
                                     "model": display_model,
-                                    "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason or "stop"}],
+                                    "choices": [
+                                        {
+                                            "index": 0,
+                                            "delta": {"role": "assistant", "content": safe_error_text},
+                                            "finish_reason": None,
+                                        }
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n\n"
+                        ).encode()
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                {
+                                    "id": message_id,
+                                    "object": "chat.completion.chunk",
+                                    "created": created,
+                                    "model": display_model,
+                                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                                 },
                                 ensure_ascii=False,
                             )
                             + "\n\n"
                         ).encode()
                         yield b"data: [DONE]\n\n"
+                        return
+
+                    yield (
+                        "data: "
+                        + json.dumps(
+                            {
+                                "id": message_id,
+                                "object": "chat.completion.chunk",
+                                "created": created,
+                                "model": display_model,
+                                "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n\n"
+                    ).encode()
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data_text = line[6:].strip()
+                        if not data_text:
+                            continue
+                        try:
+                            chunk = json.loads(data_text)
+                        except Exception:
+                            continue
+                        chunk_type = chunk.get("type")
+                        if chunk_type == "content_block_start":
+                            block_index = int(chunk.get("index") or 0)
+                            block = chunk.get("content_block") or {}
+                            if isinstance(block, dict):
+                                content_blocks[block_index] = dict(block)
+                            if isinstance(block, dict) and block.get("type") == "tool_use":
+                                tool_index = len(tool_call_indexes)
+                                tool_call_indexes[block_index] = tool_index
+                                delta_payload = {
+                                    "tool_calls": [
+                                        {
+                                            "index": tool_index,
+                                            "id": str(block.get("id") or f"toolu_{tool_index}"),
+                                            "type": "function",
+                                            "function": {
+                                                "name": str(block.get("name") or ""),
+                                                "arguments": "",
+                                            },
+                                        }
+                                    ]
+                                }
+                                yield (
+                                    "data: "
+                                    + json.dumps(
+                                        {
+                                            "id": message_id,
+                                            "object": "chat.completion.chunk",
+                                            "created": created,
+                                            "model": display_model,
+                                            "choices": [{"index": 0, "delta": delta_payload, "finish_reason": None}],
+                                        },
+                                        ensure_ascii=False,
+                                    )
+                                    + "\n\n"
+                                ).encode()
+                        elif chunk_type == "content_block_delta":
+                            block_index = int(chunk.get("index") or 0)
+                            delta = chunk.get("delta") or {}
+                            block = content_blocks.get(block_index)
+                            if isinstance(block, dict):
+                                block_type = str(block.get("type") or "")
+                                delta_type = str(delta.get("type") or "")
+                                if block_type == "text" and delta_type == "text_delta":
+                                    block["text"] = str(block.get("text") or "") + str(delta.get("text") or "")
+                                elif block_type in {"thinking", "redacted_thinking"}:
+                                    if "thinking" in delta:
+                                        key = "thinking"
+                                        block[key] = str(block.get(key) or "") + str(delta.get("thinking") or "")
+                                    if "data" in delta:
+                                        key = "data"
+                                        block[key] = str(block.get(key) or "") + str(delta.get("data") or "")
+                            if delta.get("type") == "text_delta":
+                                content = delta.get("text") or ""
+                                yield (
+                                    "data: "
+                                    + json.dumps(
+                                        {
+                                            "id": message_id,
+                                            "object": "chat.completion.chunk",
+                                            "created": created,
+                                            "model": display_model,
+                                            "choices": [
+                                                {"index": 0, "delta": {"content": content}, "finish_reason": None}
+                                            ],
+                                        },
+                                        ensure_ascii=False,
+                                    )
+                                    + "\n\n"
+                                ).encode()
+                            elif delta.get("type") == "input_json_delta" and block_index in tool_call_indexes:
+                                yield (
+                                    "data: "
+                                    + json.dumps(
+                                        {
+                                            "id": message_id,
+                                            "object": "chat.completion.chunk",
+                                            "created": created,
+                                            "model": display_model,
+                                            "choices": [
+                                                {
+                                                    "index": 0,
+                                                    "delta": {
+                                                        "tool_calls": [
+                                                            {
+                                                                "index": tool_call_indexes[block_index],
+                                                                "function": {
+                                                                    "arguments": str(delta.get("partial_json") or ""),
+                                                                },
+                                                            }
+                                                        ]
+                                                    },
+                                                    "finish_reason": None,
+                                                }
+                                            ],
+                                        },
+                                        ensure_ascii=False,
+                                    )
+                                    + "\n\n"
+                                ).encode()
+                        elif chunk_type == "message_delta":
+                            delta = chunk.get("delta") or {}
+                            finish_reason = openai_finish_reason(delta.get("stop_reason", finish_reason))
+                        elif chunk_type == "message_stop":
+                            ordered_blocks = [content_blocks[idx] for idx in sorted(content_blocks)]
+                            self._remember_cached_thinking(source_cfg, str(payload.get("model") or ""), ordered_blocks)
+                            yield (
+                                "data: "
+                                + json.dumps(
+                                    {
+                                        "id": message_id,
+                                        "object": "chat.completion.chunk",
+                                        "created": created,
+                                        "model": display_model,
+                                        "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason or "stop"}],
+                                    },
+                                    ensure_ascii=False,
+                                )
+                                + "\n\n"
+                            ).encode()
+                            yield b"data: [DONE]\n\n"
+            except httpx.HTTPError as exc:
+                error_text = f"upstream connection error: {exc}"
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "id": message_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": display_model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"role": "assistant", "content": error_text},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n\n"
+                ).encode()
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "id": message_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": display_model,
+                            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n\n"
+                ).encode()
+                yield b"data: [DONE]\n\n"
 
     async def chat_json_openai(
         self,

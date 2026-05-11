@@ -16,6 +16,12 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds") + "Z"
 
 
+def _normalize_done_reason(finish_reason: Any) -> str:
+    if isinstance(finish_reason, str) and finish_reason:
+        return finish_reason
+    return "stop"
+
+
 def _as_positive_int(value: Any) -> int | None:
     try:
         parsed = int(value)
@@ -143,6 +149,7 @@ class OpenAIRuleHandler(RuleHandler):
                     await response.aread()
                     raise make_http_error(response)
                 reasoning_content = ""
+                tool_calls_by_index: Dict[int, Dict[str, Any]] = {}
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -156,6 +163,44 @@ class OpenAIRuleHandler(RuleHandler):
                     choice = chunk.get("choices", [{}])[0]
                     delta = choice.get("delta", {})
                     content = delta.get("content") or choice.get("text") or ""
+
+                    delta_tool_calls = delta.get("tool_calls")
+                    if isinstance(delta_tool_calls, list):
+                        for tool_call in delta_tool_calls:
+                            if not isinstance(tool_call, dict):
+                                continue
+                            index_raw = tool_call.get("index")
+                            try:
+                                index = int(index_raw)
+                            except (TypeError, ValueError):
+                                index = len(tool_calls_by_index)
+
+                            current = tool_calls_by_index.get(index)
+                            if current is None:
+                                current = {
+                                    "id": "",
+                                    "type": "function",
+                                    "function": {"name": "", "arguments": ""},
+                                }
+                                tool_calls_by_index[index] = current
+
+                            tool_id = tool_call.get("id")
+                            if isinstance(tool_id, str) and tool_id:
+                                current["id"] = tool_id
+
+                            tool_type = tool_call.get("type")
+                            if isinstance(tool_type, str) and tool_type:
+                                current["type"] = tool_type
+
+                            func = tool_call.get("function")
+                            if isinstance(func, dict):
+                                func_name = func.get("name")
+                                if isinstance(func_name, str) and func_name:
+                                    current["function"]["name"] = func_name
+                                func_args = func.get("arguments")
+                                if isinstance(func_args, str) and func_args:
+                                    current["function"]["arguments"] += func_args
+
                     chunk_reasoning = delta.get("reasoning_content")
                     if not chunk_reasoning:
                         message = choice.get("message", {})
@@ -168,6 +213,20 @@ class OpenAIRuleHandler(RuleHandler):
                     message: Dict[str, Any] = {"role": "assistant", "content": content}
                     if reasoning_content:
                         message["reasoning_content"] = reasoning_content
+                    if done and tool_calls_by_index:
+                        ordered_tool_calls = []
+                        for index in sorted(tool_calls_by_index.keys()):
+                            tool_call = tool_calls_by_index[index]
+                            function_block = tool_call.get("function") or {}
+                            if not any([
+                                tool_call.get("id"),
+                                function_block.get("name"),
+                                function_block.get("arguments"),
+                            ]):
+                                continue
+                            ordered_tool_calls.append(tool_call)
+                        if ordered_tool_calls:
+                            message["tool_calls"] = ordered_tool_calls
                     obj: Dict[str, Any] = {
                         "model": model,
                         "created_at": now_iso(),
@@ -176,7 +235,7 @@ class OpenAIRuleHandler(RuleHandler):
                     }
                     if done:
                         usage = chunk.get("usage") or {}
-                        obj["done_reason"] = "stop"
+                        obj["done_reason"] = _normalize_done_reason(finish_reason)
                         obj["total_duration"] = 0
                         obj["load_duration"] = 0
                         obj["prompt_eval_count"] = usage.get("prompt_tokens", 0)
@@ -219,7 +278,7 @@ class OpenAIRuleHandler(RuleHandler):
                     }
                     if done:
                         usage = chunk.get("usage") or {}
-                        obj["done_reason"] = "stop"
+                        obj["done_reason"] = _normalize_done_reason(finish_reason)
                         obj["total_duration"] = 0
                         obj["load_duration"] = 0
                         obj["prompt_eval_count"] = usage.get("prompt_tokens", 0)

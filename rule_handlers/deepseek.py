@@ -11,7 +11,7 @@ from .base import SourceConfig
 from .anthropic import AnthropicRuleHandler
 
 RULE_DEEPSEEK = "deepseek"
-_THINKING_CACHE_LIMIT = 32
+_THINKING_CACHE_LIMIT = 256
 _DEEPSEEK_THINKING_CACHE: Dict[tuple[str, str], list[Dict[str, Any]]] = {}
 logger = logging.getLogger("ollama_proxy.deepseek")
 
@@ -50,6 +50,14 @@ def _has_thinking_block(blocks: Any) -> bool:
     return False
 
 
+def _message_has_thinking(message: Any) -> bool:
+    if not isinstance(message, dict):
+        return False
+    if str(message.get("role") or "") != "assistant":
+        return False
+    return _has_thinking_block(message.get("content"))
+
+
 class DeepSeekRuleHandler(AnthropicRuleHandler):
     rules = (RULE_DEEPSEEK,)
 
@@ -86,8 +94,9 @@ class DeepSeekRuleHandler(AnthropicRuleHandler):
 
         injected_count = 0
         miss_count = 0
+        miss_indices: list[int] = []
 
-        for message in messages:
+        for index, message in enumerate(messages):
             if not isinstance(message, dict) or str(message.get("role") or "") != "assistant":
                 continue
 
@@ -121,6 +130,7 @@ class DeepSeekRuleHandler(AnthropicRuleHandler):
 
             if match_index < 0:
                 miss_count += 1
+                miss_indices.append(index)
                 continue
 
             chosen = normalized_entries[match_index]
@@ -129,6 +139,31 @@ class DeepSeekRuleHandler(AnthropicRuleHandler):
             injected_count += 1
 
         if miss_count:
+            first_replayable_assistant = -1
+            for idx, message in enumerate(messages):
+                if _message_has_thinking(message):
+                    first_replayable_assistant = idx
+                    break
+
+            if first_replayable_assistant >= 0 and miss_indices and min(miss_indices) < first_replayable_assistant:
+                preserved_prefix: list[Dict[str, Any]] = []
+                for message in messages:
+                    if not isinstance(message, dict):
+                        continue
+                    if str(message.get("role") or "") == "system":
+                        preserved_prefix.append(message)
+
+                trimmed_suffix = messages[first_replayable_assistant:]
+                payload["messages"] = preserved_prefix + trimmed_suffix
+                logger.warning(
+                    "deepseek thinking trim history source=%s model=%s misses=%s cut_before=%s kept=%s",
+                    source_cfg.get("name"),
+                    model,
+                    miss_count,
+                    first_replayable_assistant,
+                    len(payload["messages"]),
+                )
+
             logger.info(
                 "deepseek thinking inject partial source=%s model=%s injected=%s misses=%s cache_size=%s",
                 source_cfg.get("name"),
