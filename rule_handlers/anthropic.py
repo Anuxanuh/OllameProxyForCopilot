@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict
 
 import httpx
@@ -13,7 +13,7 @@ RULE_ANTHROPIC = "anthropic"
 
 
 def now_iso() -> str:
-    return datetime.utcnow().isoformat(timespec="microseconds") + "Z"
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds") + "Z"
 
 
 def anthropic_stop_reason(stop_reason: str | None) -> str:

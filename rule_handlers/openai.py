@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict
 
 import httpx
@@ -13,7 +13,7 @@ RULE_OPENAI_COMPATIBLE_PARTIAL = "openai_compatible_partial"
 
 
 def now_iso() -> str:
-    return datetime.utcnow().isoformat(timespec="microseconds") + "Z"
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds") + "Z"
 
 
 class OpenAIRuleHandler(RuleHandler):

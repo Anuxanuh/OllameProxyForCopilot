@@ -2,7 +2,7 @@ import json
 import time
 import ast
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -277,7 +277,7 @@ DEFAULT_MODEL = PROXY_CONFIG["default_model"]
 
 
 def now_iso() -> str:
-    return datetime.utcnow().isoformat(timespec="microseconds") + "Z"
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds") + "Z"
 
 
 def safe_text_preview(raw: bytes, limit: int = 240) -> str:
