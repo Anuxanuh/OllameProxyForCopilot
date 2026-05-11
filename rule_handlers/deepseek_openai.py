@@ -360,6 +360,20 @@ class DeepSeekOpenAIRuleHandler(OpenAIRuleHandler):
                         reasoning_piece = message.get("reasoning_content")
                 if isinstance(reasoning_piece, str) and reasoning_piece:
                     full_reasoning += reasoning_piece
+
+                # Keep reasoning only in proxy cache. Do not forward it to Copilot client,
+                # otherwise large cumulative reasoning chunks can trigger "Response too long".
+                if isinstance(delta, dict) and "reasoning_content" in delta:
+                    delta.pop("reasoning_content", None)
+                message_obj = choice.get("message")
+                if isinstance(message_obj, dict) and "reasoning_content" in message_obj:
+                    message_obj.pop("reasoning_content", None)
+                if isinstance(choice, dict) and "reasoning_content" in choice:
+                    choice.pop("reasoning_content", None)
+
+                yield ("data: " + json.dumps(chunk, ensure_ascii=False) + "\n\n").encode()
+                continue
+
             yield chunk_bytes
 
         self._remember_cached_reasoning(
@@ -384,6 +398,8 @@ class DeepSeekOpenAIRuleHandler(OpenAIRuleHandler):
                     message.get("reasoning_content"),
                     prepared_payload.get("messages"),
                 )
+                # For client compatibility (especially Copilot), do not expose reasoning_content.
+                message.pop("reasoning_content", None)
         return data
 
     async def list_models(self, source_cfg: SourceConfig) -> list[Dict[str, Any]]:

@@ -482,6 +482,17 @@ class OpenAIRuleHandler(RuleHandler):
                 created,
             )
             if emitted_any_chunk:
+                # Upstream may drop mid-stream and never send terminal chunk.
+                # Emit a synthetic stop + [DONE] so Copilot can finalize choices.
+                done_chunk = {
+                    "id": message_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": display_model,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                }
+                yield ("data: " + json.dumps(done_chunk, ensure_ascii=False) + "\n\n").encode()
+                yield b"data: [DONE]\n\n"
                 return
             async for item in _emit_error_sse(_safe_error_text(str(exc))):
                 yield item

@@ -1,11 +1,16 @@
 {
-  "default_model": "gpt-4o",
-  "sources": {
-    "openai-main": {
-      "enable": true,
-      "rule": "openai",
-      "base_url": "https://api.openai-compatible.example/v1",
-      "api_key": "sk-xxx"
-    }
-  }
+	"default_model": "gpt-4o",
+	"sources": {
+		"openai-main": {
+			"rule": "openai",
+			"base_url": "https://api.openai-compatible.example/v1",
+			"api_key": "sk-xxx"
+		},
+		"deepseek": {
+			"enabled": false,
+			"rule": "deepseek_openai",
+			"base_url": "https://api.deepseek.com",
+			"api_key": "sk-xxx"
+		}
+	}
 }

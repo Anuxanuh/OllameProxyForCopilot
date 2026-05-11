@@ -18,6 +18,11 @@ def safe_text_preview(raw: bytes, limit: int = 240) -> str:
     return text[:limit] + "..."
 
 
+def safe_text_full(raw: bytes) -> str:
+    """将原始字节安全地转为完整文本（用于文件日志全量记录）"""
+    return raw.decode("utf-8", errors="replace").replace("\n", "\\n")
+
+
 def flatten_options(body: Dict[str, Any], payload: Dict[str, Any]) -> None:
     """将 Ollama 风格的 options 子字段平铺到 payload 顶层，同时复制 stream/keep_alive 等字段"""
     options = body.get("options") or {}

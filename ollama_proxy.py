@@ -42,6 +42,13 @@ def configure_logging() -> None:
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
 
+    # Dedicated full-body trace logger: file only, no console noise.
+    file_trace_logger = logging.getLogger("ollama_proxy.filetrace")
+    file_trace_logger.setLevel(logging.INFO)
+    file_trace_logger.handlers.clear()
+    file_trace_logger.addHandler(file_handler)
+    file_trace_logger.propagate = False
+
 
 configure_logging()
 logger = logging.getLogger("ollama_proxy")
