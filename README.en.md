@@ -10,14 +10,12 @@ A middleware that translates upstream LLM APIs into the Ollama HTTP API, enablin
 ```bash
 pip install -r requirements.txt
 ```
-2. Edit proxy_config.json (configure upstream sources)
+2. Edit `proxy_config.json` (configure upstream sources)
 3. Start the proxy
 ```bash
 python ollama_proxy.py
 ```
-
 4. Set the Ollama address in VS Code Copilot to:
-
 ```
 http://127.0.0.1:11434
 ```

@@ -16,7 +16,6 @@ pip install -r requirements.txt
 python ollama_proxy.py
 ```
 4. VS Code Copilot 中设置 Ollama 地址为：
-
 ```
 http://127.0.0.1:11434
 ```

@@ -183,3 +183,4 @@ cython_debug/
 # develop
 *.private.json
 Logs/**
+WebUi/**
