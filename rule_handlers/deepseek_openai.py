@@ -140,55 +140,33 @@ def _assistant_without_reasoning_indices(messages: list[Any]) -> list[int]:
     return indices
 
 
-def _trim_unreplayable_history(
+def _fill_missing_reasoning(
     payload: Dict[str, Any],
     source_cfg: SourceConfig,
     model: str,
     unresolved_indices: list[int],
 ) -> None:
+    """Fill missing reasoning_content with empty string instead of trimming history."""
     messages = payload.get("messages")
     if not isinstance(messages, list) or not unresolved_indices:
         return
 
-    preserved_system: list[Dict[str, Any]] = []
-    for message in messages:
-        if not isinstance(message, dict):
-            continue
-        if str(message.get("role") or "") == "system":
-            preserved_system.append(message)
+    for idx in unresolved_indices:
+        message = messages[idx]
+        if isinstance(message, dict):
+            message["reasoning_content"] = ""
 
-    cut_from = max(unresolved_indices) + 1
-    safe_suffix: list[Dict[str, Any]] = []
-    for message in messages[cut_from:]:
-        if not isinstance(message, dict):
-            continue
-        if str(message.get("role") or "") == "assistant":
-            reasoning_content = message.get("reasoning_content")
-            if not isinstance(reasoning_content, str) or not reasoning_content:
-                continue
-        safe_suffix.append(message)
-
-    if not safe_suffix:
-        for message in reversed(messages):
-            if not isinstance(message, dict):
-                continue
-            if str(message.get("role") or "") == "user":
-                safe_suffix = [message]
-                break
-
-    payload["messages"] = preserved_system + safe_suffix
     state_key = _cache_key(source_cfg, model, messages)
-    trim_state = (len(unresolved_indices), cut_from, len(payload["messages"]))
-    if _DEEPSEEK_OPENAI_LAST_TRIM_STATE.get(state_key) != trim_state:
-        _DEEPSEEK_OPENAI_LAST_TRIM_STATE[state_key] = trim_state
+    fill_state = (len(unresolved_indices), unresolved_indices[0], unresolved_indices[-1])
+    if _DEEPSEEK_OPENAI_LAST_TRIM_STATE.get(state_key) != fill_state:
+        _DEEPSEEK_OPENAI_LAST_TRIM_STATE[state_key] = fill_state
         logger.info(
-            "deepseek openai reasoning trim history source=%s model=%s thread=%s unresolved=%s cut_from=%s kept=%s",
+            "deepseek openai reasoning fill missing source=%s model=%s thread=%s filled=%s indices=%s",
             source_cfg.get("name"),
             model,
             state_key[2],
-            trim_state[0],
-            trim_state[1],
-            trim_state[2],
+            len(unresolved_indices),
+            unresolved_indices,
         )
 
 
@@ -209,7 +187,7 @@ class DeepSeekOpenAIRuleHandler(OpenAIRuleHandler):
         if not entries:
             unresolved = _assistant_without_reasoning_indices(messages)
             if unresolved:
-                _trim_unreplayable_history(normalized, source_cfg, model, unresolved)
+                _fill_missing_reasoning(normalized, source_cfg, model, unresolved)
             return normalized
 
         normalized_entries: list[Dict[str, Any]] = []
@@ -269,7 +247,7 @@ class DeepSeekOpenAIRuleHandler(OpenAIRuleHandler):
         if miss_count:
             unresolved = _assistant_without_reasoning_indices(messages)
             if unresolved:
-                _trim_unreplayable_history(normalized, source_cfg, model, unresolved)
+                _fill_missing_reasoning(normalized, source_cfg, model, unresolved)
             logger.info(
                 "deepseek openai reasoning inject partial source=%s model=%s thread=%s injected=%s misses=%s cache_size=%s",
                 source_cfg.get("name"),

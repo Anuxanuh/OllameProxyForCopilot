@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict
 
@@ -113,6 +114,30 @@ def _extract_upstream_model_meta(item: Dict[str, Any]) -> Dict[str, Any]:
         meta["model_info"] = dict(model_info)
 
     return meta
+
+
+def _validate_tool_messages(messages: list[Dict[str, Any]]) -> None:
+    """
+    验证OpenAI API消息格式的工具消息约束。
+    
+    规则：每个 role='tool' 的消息必须有对应的前面的 role='assistant' 消息且该消息有 tool_calls。
+    如果发现孤立的tool消息（无对应的tool_calls），记录警告。
+    """
+    has_tool_calls = False
+    for i, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        role = str(msg.get("role") or "")
+        
+        if role == "assistant":
+            tool_calls = msg.get("tool_calls")
+            has_tool_calls = bool(isinstance(tool_calls, list) and len(tool_calls) > 0)
+        elif role == "tool":
+            if not has_tool_calls:
+                logger.warning(
+                    "invalid message sequence at index %s: role='tool' without preceding assistant message with tool_calls",
+                    i,
+                )
 
 
 def _openai_payload_stats(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -402,9 +427,45 @@ class OpenAIRuleHandler(RuleHandler):
     ) -> AsyncIterator[bytes]:
         url = source_url(source_cfg, "chat_completions")
         payload_stats = _openai_payload_stats(payload)
+        messages = payload.get("messages", [])
+        
+        # 验证消息序列
+        if isinstance(messages, list):
+            _validate_tool_messages(messages)
+        
         emitted_any_chunk = False
         message_id = f"chatcmpl-openai-{int(time.time() * 1000)}"
         created = int(time.time())
+
+        def _extract_exception_details(exc: Exception) -> str:
+            """提取异常的详细信息，包括类型、errno等"""
+            exc_type = type(exc).__name__
+            
+            # 优先提取特定的错误信息
+            if hasattr(exc, 'errno') and exc.errno:
+                return f"{exc_type} (errno={exc.errno})"
+            
+            # 尝试获取args中的信息
+            if hasattr(exc, 'args') and exc.args:
+                msg = str(exc.args[0]) if exc.args else ""
+                if msg:
+                    return f"{exc_type}: {msg[:300]}"
+            
+            # 尝试获取原始异常
+            if hasattr(exc, '__cause__') and exc.__cause__:
+                cause_type = type(exc.__cause__).__name__
+                cause_msg = str(exc.__cause__)
+                if cause_msg:
+                    return f"{exc_type} (caused by {cause_type}: {cause_msg[:250]})"
+                return f"{exc_type} (caused by {cause_type})"
+            
+            # 最后尝试str()
+            exc_str = str(exc)
+            if exc_str:
+                return f"{exc_type}: {exc_str[:300]}"
+            
+            # 默认值
+            return exc_type
 
         def _safe_error_text(raw: str) -> str:
             text = (raw or "").strip()
@@ -438,64 +499,92 @@ class OpenAIRuleHandler(RuleHandler):
             yield ("data: " + json.dumps(done_chunk, ensure_ascii=False) + "\n\n").encode()
             yield b"data: [DONE]\n\n"
 
-        try:
-            async with httpx.AsyncClient(timeout=source_cfg["timeout"]) as client:
-                async with client.stream("POST", url, headers=source_headers(source_cfg), json=payload) as response:
-                    if response.status_code >= 400:
-                        error_text = (await response.aread()).decode("utf-8", errors="replace").strip()
-                        logger.warning(
-                            "openai sse upstream error source=%s model=%s status=%s stats=%s error=%s",
-                            source_cfg.get("name"),
-                            display_model,
-                            response.status_code,
-                            payload_stats,
-                            error_text or f"upstream returned HTTP {response.status_code}",
-                        )
-                        async for item in _emit_error_sse(_safe_error_text(error_text)):
-                            yield item
-                        return
-                    async for line in response.aiter_lines():
-                        if not line:
-                            emitted_any_chunk = True
-                            yield b"\n"
-                            continue
-                        if line.startswith("data: ") and line != "data: [DONE]":
-                            try:
-                                chunk = json.loads(line[6:])
-                                chunk["model"] = display_model
+        max_retries = 2
+        retry_backoff_seconds = (0.3, 0.8)
+        attempt = 0
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=source_cfg["timeout"]) as client:
+                    async with client.stream("POST", url, headers=source_headers(source_cfg), json=payload) as response:
+                        if response.status_code >= 400:
+                            error_text = (await response.aread()).decode("utf-8", errors="replace").strip()
+                            logger.warning(
+                                "openai sse upstream error source=%s model=%s status=%s stats=%s error=%s",
+                                source_cfg.get("name"),
+                                display_model,
+                                response.status_code,
+                                payload_stats,
+                                error_text or f"upstream returned HTTP {response.status_code}",
+                            )
+                            async for item in _emit_error_sse(_safe_error_text(error_text)):
+                                yield item
+                            return
+                        async for line in response.aiter_lines():
+                            if not line:
                                 emitted_any_chunk = True
-                                yield ("data: " + json.dumps(chunk, ensure_ascii=False) + "\n\n").encode()
+                                yield b"\n"
                                 continue
-                            except Exception:
-                                pass
-                        emitted_any_chunk = True
-                        yield (line + "\n\n").encode()
-        except (httpx.HTTPError, httpx.StreamError) as exc:
-            logger.warning(
-                "openai sse upstream connection failure source=%s model=%s emitted=%s stats=%s error=%s request_id=%s created=%s",
-                source_cfg.get("name"),
-                display_model,
-                emitted_any_chunk,
-                payload_stats,
-                exc,
-                message_id,
-                created,
-            )
-            if emitted_any_chunk:
-                # Upstream may drop mid-stream and never send terminal chunk.
-                # Emit a synthetic stop + [DONE] so Copilot can finalize choices.
-                done_chunk = {
-                    "id": message_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": display_model,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-                }
-                yield ("data: " + json.dumps(done_chunk, ensure_ascii=False) + "\n\n").encode()
-                yield b"data: [DONE]\n\n"
+                            if line.startswith("data: ") and line != "data: [DONE]":
+                                try:
+                                    chunk = json.loads(line[6:])
+                                    chunk["model"] = display_model
+                                    emitted_any_chunk = True
+                                    yield ("data: " + json.dumps(chunk, ensure_ascii=False) + "\n\n").encode()
+                                    continue
+                                except Exception:
+                                    pass
+                            emitted_any_chunk = True
+                            yield (line + "\n\n").encode()
                 return
-            async for item in _emit_error_sse(_safe_error_text(str(exc))):
-                yield item
+            except (httpx.HTTPError, httpx.StreamError) as exc:
+                exc_details = _extract_exception_details(exc)
+                should_retry = (
+                    isinstance(exc, httpx.RemoteProtocolError)
+                    and not emitted_any_chunk
+                    and attempt < max_retries
+                )
+                logger.warning(
+                    "openai sse upstream connection failure source=%s model=%s emitted=%s attempt=%s max_retries=%s stats=%s error=%s error_details=%s request_id=%s created=%s",
+                    source_cfg.get("name"),
+                    display_model,
+                    emitted_any_chunk,
+                    attempt + 1,
+                    max_retries,
+                    payload_stats,
+                    exc,
+                    exc_details,
+                    message_id,
+                    created,
+                )
+                if should_retry:
+                    backoff = retry_backoff_seconds[min(attempt, len(retry_backoff_seconds) - 1)]
+                    logger.info(
+                        "openai sse retrying after remote protocol disconnect source=%s model=%s attempt=%s backoff_seconds=%.2f request_id=%s",
+                        source_cfg.get("name"),
+                        display_model,
+                        attempt + 1,
+                        backoff,
+                        message_id,
+                    )
+                    attempt += 1
+                    await asyncio.sleep(backoff)
+                    continue
+                if emitted_any_chunk:
+                    # Upstream may drop mid-stream and never send terminal chunk.
+                    # Emit a synthetic stop + [DONE] so Copilot can finalize choices.
+                    done_chunk = {
+                        "id": message_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": display_model,
+                        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                    }
+                    yield ("data: " + json.dumps(done_chunk, ensure_ascii=False) + "\n\n").encode()
+                    yield b"data: [DONE]\n\n"
+                    return
+                async for item in _emit_error_sse(_safe_error_text(exc_details)):
+                    yield item
+                return
 
     async def chat_json_openai(
         self,
