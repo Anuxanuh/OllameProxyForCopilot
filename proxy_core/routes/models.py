@@ -21,7 +21,8 @@ def create_models_router(state: ProxyState, logger) -> APIRouter:
         return {
             "object": "list",
             "data": [
-                {"id": name, "object": "model", "created": 0, "owned_by": "proxy", "root": name}
+                {"id": name, "object": "model", "created": 0,
+                    "owned_by": "proxy", "root": name}
                 for name in state.model_registry.keys()
             ],
         }
@@ -59,10 +60,12 @@ def create_models_router(state: ProxyState, logger) -> APIRouter:
     @router.post("/api/show")
     async def show_model(request: Request) -> Dict[str, Any]:
         body = await parse_request_json(request, logger, allow_empty=True)
-        model_name = state.normalize_model_name(body.get("model") or body.get("name") or state.default_model)
+        model_name = state.normalize_model_name(
+            body.get("model") or body.get("name") or state.default_model)
         model_cfg = await state.resolve_model_config(model_name, allow_default=False)
         source_cfg = state.resolve_source_config(model_cfg["source"])
-        logger.info("show resolved_model=%s request_keys=%s", model_name, sorted(body.keys()))
+        logger.info("show resolved_model=%s request_keys=%s",
+                    model_name, sorted(body.keys()))
         meta = model_cfg["meta"]
         family = meta.get("family", guess_model_family(model_name))
         tagged_name = f"{model_name}:latest"
@@ -82,7 +85,7 @@ def create_models_router(state: ProxyState, logger) -> APIRouter:
                 f"# To build a new Modelfile based on this one, replace the FROM line with:\\n"
                 f"# FROM {tagged_name}\\n"
                 f"FROM {tagged_name}\\n"
-                f'TEMPLATE """{ template }"""\\n'
+                f'TEMPLATE """{template}"""\\n'
                 "PARAMETER stop \"<|im_start|>\"\\n"
                 "PARAMETER stop \"<|im_end|>\"\\n"
             ),

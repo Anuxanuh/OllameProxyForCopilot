@@ -15,9 +15,12 @@ from .openai import OpenAIRuleHandler, _extract_upstream_model_meta
 RULE_DEEPSEEK_OPENAI = "deepseek_openai"
 logger = logging.getLogger("ollama_proxy.deepseek_openai")
 _REASONING_CACHE_LIMIT = 256
-_DEEPSEEK_OPENAI_REASONING_CACHE: Dict[tuple[str, str, str], list[Dict[str, str]]] = {}
-_DEEPSEEK_OPENAI_LAST_TRIM_STATE: Dict[tuple[str, str, str], tuple[int, int, int]] = {}
-_DEEPSEEK_OPENAI_CACHE_PATH = Path(__file__).resolve().parents[1] / "Logs" / "deepseek_openai_reasoning_cache.json"
+_DEEPSEEK_OPENAI_REASONING_CACHE: Dict[tuple[str,
+                                             str, str], list[Dict[str, str]]] = {}
+_DEEPSEEK_OPENAI_LAST_TRIM_STATE: Dict[tuple[str,
+                                             str, str], tuple[int, int, int]] = {}
+_DEEPSEEK_OPENAI_CACHE_PATH = Path(__file__).resolve(
+).parents[1] / "Logs" / "deepseek_openai_reasoning_cache.json"
 
 _DEEPSEEK_OPENAI_CONTEXT_FALLBACK = {
     "deepseek-v4-flash": 1_000_000,
@@ -82,7 +85,8 @@ def _load_persistent_cache() -> None:
     if not _DEEPSEEK_OPENAI_CACHE_PATH.exists():
         return
     try:
-        raw = json.loads(_DEEPSEEK_OPENAI_CACHE_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(
+            _DEEPSEEK_OPENAI_CACHE_PATH.read_text(encoding="utf-8"))
     except Exception as exc:
         logger.warning(
             "deepseek openai reasoning cache load failed path=%s error=%s",
@@ -120,10 +124,12 @@ def _save_persistent_cache() -> None:
     _DEEPSEEK_OPENAI_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     serializable: Dict[str, Any] = {}
     for cache_key, entries in _DEEPSEEK_OPENAI_REASONING_CACHE.items():
-        serializable[_serialize_cache_key(cache_key)] = entries[-_REASONING_CACHE_LIMIT:]
+        serializable[_serialize_cache_key(
+            cache_key)] = entries[-_REASONING_CACHE_LIMIT:]
 
     temp_path = _DEEPSEEK_OPENAI_CACHE_PATH.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(serializable, ensure_ascii=False), encoding="utf-8")
+    temp_path.write_text(json.dumps(
+        serializable, ensure_ascii=False), encoding="utf-8")
     temp_path.replace(_DEEPSEEK_OPENAI_CACHE_PATH)
 
 
@@ -157,7 +163,8 @@ def _fill_missing_reasoning(
             message["reasoning_content"] = ""
 
     state_key = _cache_key(source_cfg, model, messages)
-    fill_state = (len(unresolved_indices), unresolved_indices[0], unresolved_indices[-1])
+    fill_state = (len(unresolved_indices),
+                  unresolved_indices[0], unresolved_indices[-1])
     if _DEEPSEEK_OPENAI_LAST_TRIM_STATE.get(state_key) != fill_state:
         _DEEPSEEK_OPENAI_LAST_TRIM_STATE[state_key] = fill_state
         logger.info(
@@ -183,11 +190,13 @@ class DeepSeekOpenAIRuleHandler(OpenAIRuleHandler):
         if not model or not isinstance(messages, list):
             return normalized
 
-        entries = _DEEPSEEK_OPENAI_REASONING_CACHE.get(_cache_key(source_cfg, model, messages))
+        entries = _DEEPSEEK_OPENAI_REASONING_CACHE.get(
+            _cache_key(source_cfg, model, messages))
         if not entries:
             unresolved = _assistant_without_reasoning_indices(messages)
             if unresolved:
-                _fill_missing_reasoning(normalized, source_cfg, model, unresolved)
+                _fill_missing_reasoning(
+                    normalized, source_cfg, model, unresolved)
             return normalized
 
         normalized_entries: list[Dict[str, Any]] = []
@@ -247,7 +256,8 @@ class DeepSeekOpenAIRuleHandler(OpenAIRuleHandler):
         if miss_count:
             unresolved = _assistant_without_reasoning_indices(messages)
             if unresolved:
-                _fill_missing_reasoning(normalized, source_cfg, model, unresolved)
+                _fill_missing_reasoning(
+                    normalized, source_cfg, model, unresolved)
             logger.info(
                 "deepseek openai reasoning inject partial source=%s model=%s thread=%s injected=%s misses=%s cache_size=%s",
                 source_cfg.get("name"),
@@ -303,7 +313,8 @@ class DeepSeekOpenAIRuleHandler(OpenAIRuleHandler):
                 if isinstance(reasoning_piece, str) and reasoning_piece:
                     full_reasoning = reasoning_piece
             if obj.get("done"):
-                self._remember_cached_reasoning(source_cfg, model, full_content, full_reasoning, prepared_payload.get("messages"))
+                self._remember_cached_reasoning(
+                    source_cfg, model, full_content, full_reasoning, prepared_payload.get("messages"))
             yield line_json
 
     async def stream_generate_to_ollama(self, source_cfg: SourceConfig, model: str, payload: Dict[str, Any]):
@@ -401,12 +412,14 @@ class DeepSeekOpenAIRuleHandler(OpenAIRuleHandler):
         for item in items:
             if not isinstance(item, dict):
                 continue
-            model_name = str(item.get("id") or item.get("name") or "").strip().lower()
+            model_name = str(item.get("id") or item.get(
+                "name") or "").strip().lower()
             if not model_name:
                 continue
             meta = _extract_upstream_model_meta(item)
             if not meta.get("context_length"):
-                fallback_ctx = _DEEPSEEK_OPENAI_CONTEXT_FALLBACK.get(model_name)
+                fallback_ctx = _DEEPSEEK_OPENAI_CONTEXT_FALLBACK.get(
+                    model_name)
                 if fallback_ctx:
                     meta["context_length"] = fallback_ctx
             models.append(

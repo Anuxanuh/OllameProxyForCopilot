@@ -88,7 +88,8 @@ def _extract_upstream_model_meta(item: Dict[str, Any]) -> Dict[str, Any]:
     if context_length is not None:
         meta["context_length"] = context_length
 
-    parameter_count = _first_positive_int(item, ("parameter_count", "params", "num_parameters"))
+    parameter_count = _first_positive_int(
+        item, ("parameter_count", "params", "num_parameters"))
     if parameter_count is not None:
         meta["parameter_count"] = parameter_count
 
@@ -99,7 +100,8 @@ def _extract_upstream_model_meta(item: Dict[str, Any]) -> Dict[str, Any]:
     caps = item.get("capabilities")
     capabilities: list[str] = []
     if isinstance(caps, list):
-        capabilities = [str(value).strip() for value in caps if str(value).strip()]
+        capabilities = [str(value).strip()
+                        for value in caps if str(value).strip()]
 
     modalities = item.get("input_modalities") or item.get("modalities")
     if isinstance(modalities, list):
@@ -119,7 +121,7 @@ def _extract_upstream_model_meta(item: Dict[str, Any]) -> Dict[str, Any]:
 def _validate_tool_messages(messages: list[Dict[str, Any]]) -> None:
     """
     验证OpenAI API消息格式的工具消息约束。
-    
+
     规则：每个 role='tool' 的消息必须有对应的前面的 role='assistant' 消息且该消息有 tool_calls。
     如果发现孤立的tool消息（无对应的tool_calls），记录警告。
     """
@@ -128,10 +130,11 @@ def _validate_tool_messages(messages: list[Dict[str, Any]]) -> None:
         if not isinstance(msg, dict):
             continue
         role = str(msg.get("role") or "")
-        
+
         if role == "assistant":
             tool_calls = msg.get("tool_calls")
-            has_tool_calls = bool(isinstance(tool_calls, list) and len(tool_calls) > 0)
+            has_tool_calls = bool(isinstance(
+                tool_calls, list) and len(tool_calls) > 0)
         elif role == "tool":
             if not has_tool_calls:
                 logger.warning(
@@ -145,7 +148,8 @@ def _openai_payload_stats(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(messages, list):
         messages = []
 
-    role_counts = {"system": 0, "user": 0, "assistant": 0, "tool": 0, "other": 0}
+    role_counts = {"system": 0, "user": 0,
+                   "assistant": 0, "tool": 0, "other": 0}
     assistant_reasoning_messages = 0
     tool_call_count = 0
     for message in messages:
@@ -163,10 +167,12 @@ def _openai_payload_stats(payload: Dict[str, Any]) -> Dict[str, Any]:
                 assistant_reasoning_messages += 1
             tool_calls = message.get("tool_calls")
             if isinstance(tool_calls, list):
-                tool_call_count += len([tool_call for tool_call in tool_calls if isinstance(tool_call, dict)])
+                tool_call_count += len(
+                    [tool_call for tool_call in tool_calls if isinstance(tool_call, dict)])
 
     tools = payload.get("tools")
-    request_tool_count = len([tool for tool in tools if isinstance(tool, dict)]) if isinstance(tools, list) else 0
+    request_tool_count = len([tool for tool in tools if isinstance(
+        tool, dict)]) if isinstance(tools, list) else 0
     return {
         "message_count": len(messages),
         "role_counts": role_counts,
@@ -196,12 +202,14 @@ class OpenAIRuleHandler(RuleHandler):
 
     async def proxy_json(self, source_cfg: SourceConfig, path_key: str, body: Dict[str, Any]) -> Any:
         url = source_url(source_cfg, path_key)
-        payload_stats = _openai_payload_stats(body) if path_key == "chat_completions" else {"path_key": path_key}
+        payload_stats = _openai_payload_stats(
+            body) if path_key == "chat_completions" else {"path_key": path_key}
         try:
             async with httpx.AsyncClient(timeout=source_cfg["timeout"]) as client:
                 response = await client.post(url, headers=source_headers(source_cfg), json=body)
                 if response.status_code >= 400:
-                    error_text = response.text.strip() or f"upstream returned HTTP {response.status_code}"
+                    error_text = response.text.strip(
+                    ) or f"upstream returned HTTP {response.status_code}"
                     logger.warning(
                         "openai request upstream error source=%s path=%s model=%s status=%s stats=%s error=%s",
                         source_cfg.get("name"),
@@ -261,7 +269,8 @@ class OpenAIRuleHandler(RuleHandler):
                             continue
                         choice = chunk.get("choices", [{}])[0]
                         delta = choice.get("delta", {})
-                        content = delta.get("content") or choice.get("text") or ""
+                        content = delta.get(
+                            "content") or choice.get("text") or ""
 
                         delta_tool_calls = delta.get("tool_calls")
                         if isinstance(delta_tool_calls, list):
@@ -304,19 +313,22 @@ class OpenAIRuleHandler(RuleHandler):
                         if not chunk_reasoning:
                             message = choice.get("message", {})
                             if isinstance(message, dict):
-                                chunk_reasoning = message.get("reasoning_content")
+                                chunk_reasoning = message.get(
+                                    "reasoning_content")
                         if isinstance(chunk_reasoning, str) and chunk_reasoning:
                             reasoning_content += chunk_reasoning
                         finish_reason = choice.get("finish_reason")
                         done = finish_reason is not None
-                        message: Dict[str, Any] = {"role": "assistant", "content": content}
+                        message: Dict[str, Any] = {
+                            "role": "assistant", "content": content}
                         if done and reasoning_content:
                             message["reasoning_content"] = reasoning_content
                         if done and tool_calls_by_index:
                             ordered_tool_calls = []
                             for index in sorted(tool_calls_by_index.keys()):
                                 tool_call = tool_calls_by_index[index]
-                                function_block = tool_call.get("function") or {}
+                                function_block = tool_call.get(
+                                    "function") or {}
                                 if not any([
                                     tool_call.get("id"),
                                     function_block.get("name"),
@@ -334,12 +346,15 @@ class OpenAIRuleHandler(RuleHandler):
                         }
                         if done:
                             usage = chunk.get("usage") or {}
-                            obj["done_reason"] = _normalize_done_reason(finish_reason)
+                            obj["done_reason"] = _normalize_done_reason(
+                                finish_reason)
                             obj["total_duration"] = 0
                             obj["load_duration"] = 0
-                            obj["prompt_eval_count"] = usage.get("prompt_tokens", 0)
+                            obj["prompt_eval_count"] = usage.get(
+                                "prompt_tokens", 0)
                             obj["prompt_eval_duration"] = 0
-                            obj["eval_count"] = usage.get("completion_tokens", 0)
+                            obj["eval_count"] = usage.get(
+                                "completion_tokens", 0)
                             obj["eval_duration"] = 0
                         emitted_any_chunk = True
                         yield json.dumps(obj, ensure_ascii=False) + "\n"
@@ -388,7 +403,8 @@ class OpenAIRuleHandler(RuleHandler):
                         except Exception:
                             continue
                         choice = chunk.get("choices", [{}])[0]
-                        content = choice.get("delta", {}).get("content") or choice.get("text") or ""
+                        content = choice.get("delta", {}).get(
+                            "content") or choice.get("text") or ""
                         finish_reason = choice.get("finish_reason")
                         done = finish_reason is not None
                         obj: Dict[str, Any] = {
@@ -399,12 +415,15 @@ class OpenAIRuleHandler(RuleHandler):
                         }
                         if done:
                             usage = chunk.get("usage") or {}
-                            obj["done_reason"] = _normalize_done_reason(finish_reason)
+                            obj["done_reason"] = _normalize_done_reason(
+                                finish_reason)
                             obj["total_duration"] = 0
                             obj["load_duration"] = 0
-                            obj["prompt_eval_count"] = usage.get("prompt_tokens", 0)
+                            obj["prompt_eval_count"] = usage.get(
+                                "prompt_tokens", 0)
                             obj["prompt_eval_duration"] = 0
-                            obj["eval_count"] = usage.get("completion_tokens", 0)
+                            obj["eval_count"] = usage.get(
+                                "completion_tokens", 0)
                             obj["eval_duration"] = 0
                         emitted_any_chunk = True
                         yield json.dumps(obj, ensure_ascii=False) + "\n"
@@ -428,11 +447,11 @@ class OpenAIRuleHandler(RuleHandler):
         url = source_url(source_cfg, "chat_completions")
         payload_stats = _openai_payload_stats(payload)
         messages = payload.get("messages", [])
-        
+
         # 验证消息序列
         if isinstance(messages, list):
             _validate_tool_messages(messages)
-        
+
         emitted_any_chunk = False
         message_id = f"chatcmpl-openai-{int(time.time() * 1000)}"
         created = int(time.time())
@@ -440,17 +459,17 @@ class OpenAIRuleHandler(RuleHandler):
         def _extract_exception_details(exc: Exception) -> str:
             """提取异常的详细信息，包括类型、errno等"""
             exc_type = type(exc).__name__
-            
+
             # 优先提取特定的错误信息
             if hasattr(exc, 'errno') and exc.errno:
                 return f"{exc_type} (errno={exc.errno})"
-            
+
             # 尝试获取args中的信息
             if hasattr(exc, 'args') and exc.args:
                 msg = str(exc.args[0]) if exc.args else ""
                 if msg:
                     return f"{exc_type}: {msg[:300]}"
-            
+
             # 尝试获取原始异常
             if hasattr(exc, '__cause__') and exc.__cause__:
                 cause_type = type(exc.__cause__).__name__
@@ -458,12 +477,12 @@ class OpenAIRuleHandler(RuleHandler):
                 if cause_msg:
                     return f"{exc_type} (caused by {cause_type}: {cause_msg[:250]})"
                 return f"{exc_type} (caused by {cause_type})"
-            
+
             # 最后尝试str()
             exc_str = str(exc)
             if exc_str:
                 return f"{exc_type}: {exc_str[:300]}"
-            
+
             # 默认值
             return exc_type
 
@@ -557,7 +576,8 @@ class OpenAIRuleHandler(RuleHandler):
                     created,
                 )
                 if should_retry:
-                    backoff = retry_backoff_seconds[min(attempt, len(retry_backoff_seconds) - 1)]
+                    backoff = retry_backoff_seconds[min(
+                        attempt, len(retry_backoff_seconds) - 1)]
                     logger.info(
                         "openai sse retrying after remote protocol disconnect source=%s model=%s attempt=%s backoff_seconds=%.2f request_id=%s",
                         source_cfg.get("name"),
@@ -602,7 +622,8 @@ class OpenAIRuleHandler(RuleHandler):
             async with httpx.AsyncClient(timeout=source_cfg["timeout"]) as client:
                 response = await client.get(url, headers=source_headers(source_cfg))
                 if response.status_code >= 400:
-                    error_text = response.text.strip() or f"upstream returned HTTP {response.status_code}"
+                    error_text = response.text.strip(
+                    ) or f"upstream returned HTTP {response.status_code}"
                     logger.warning(
                         "openai models upstream error source=%s status=%s error=%s",
                         source_cfg.get("name"),

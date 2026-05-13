@@ -19,12 +19,15 @@ def create_embed_router(state: ProxyState, logger) -> APIRouter:
         model_cfg = await state.resolve_model_config(body.get("model"))
         source_cfg = state.resolve_source_config(model_cfg["source"])
         handler = source_cfg["handler"]
-        require_rule_capability(source_cfg, "supports_embeddings", "embeddings")
+        require_rule_capability(
+            source_cfg, "supports_embeddings", "embeddings")
         input_data = body.get("input") or body.get("prompt")
         if input_data is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="input is required")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="input is required")
 
-        payload: Dict[str, Any] = {"model": model_cfg["upstream_model"], "input": input_data}
+        payload: Dict[str, Any] = {
+            "model": model_cfg["upstream_model"], "input": input_data}
         if "truncate" in body:
             payload["truncate"] = body["truncate"]
         flatten_options(body, payload)

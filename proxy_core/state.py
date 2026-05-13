@@ -50,7 +50,8 @@ def register_model_alias(
     existing = model_aliases.get(alias_text)
     if existing and existing != target:
         if strict:
-            raise RuntimeError(f"duplicate model alias '{alias_text}' for '{existing}' and '{target}'")
+            raise RuntimeError(
+                f"duplicate model alias '{alias_text}' for '{existing}' and '{target}'")
         return
     model_aliases[alias_text] = target
 
@@ -66,19 +67,23 @@ def register_model_entry(
 ) -> str:
     desired_name = str(model_name).strip()
     if not desired_name:
-        raise RuntimeError(f"source '{source_name}' contains an empty model name")
+        raise RuntimeError(
+            f"source '{source_name}' contains an empty model name")
     if not isinstance(model_cfg, dict):
-        raise RuntimeError(f"model '{desired_name}' in source '{source_name}' must be an object")
+        raise RuntimeError(
+            f"model '{desired_name}' in source '{source_name}' must be an object")
 
     canonical_name = desired_name
     existing = model_registry.get(canonical_name)
     if existing and existing["source"] != source_name:
         if not discovered:
-            raise RuntimeError(f"duplicate model name '{desired_name}' across sources")
+            raise RuntimeError(
+                f"duplicate model name '{desired_name}' across sources")
         canonical_name = f"{source_name}/{desired_name}"
         existing = model_registry.get(canonical_name)
         if existing and existing["source"] != source_name:
-            raise RuntimeError(f"duplicate discovered model name '{canonical_name}' across sources")
+            raise RuntimeError(
+                f"duplicate discovered model name '{canonical_name}' across sources")
     if existing and existing["source"] == source_name:
         return canonical_name
 
@@ -86,7 +91,8 @@ def register_model_entry(
     raw_meta = model_cfg.get("meta") or {}
     if raw_meta:
         if not isinstance(raw_meta, dict):
-            raise RuntimeError(f"model '{desired_name}' meta must be an object")
+            raise RuntimeError(
+                f"model '{desired_name}' meta must be an object")
         meta.update(raw_meta)
 
     aliases = model_cfg.get("aliases") or []
@@ -103,13 +109,18 @@ def register_model_entry(
 
     register_model_alias(model_aliases, canonical_name, canonical_name)
     register_model_alias(model_aliases, canonical_name.lower(), canonical_name)
-    register_model_alias(model_aliases, f"{canonical_name}:latest", canonical_name)
-    register_model_alias(model_aliases, f"{canonical_name.lower()}:latest", canonical_name)
+    register_model_alias(
+        model_aliases, f"{canonical_name}:latest", canonical_name)
+    register_model_alias(
+        model_aliases, f"{canonical_name.lower()}:latest", canonical_name)
 
     friendly_alias_strict = not discovered
-    register_model_alias(model_aliases, desired_name, canonical_name, strict=friendly_alias_strict)
-    register_model_alias(model_aliases, desired_name.lower(), canonical_name, strict=friendly_alias_strict)
-    register_model_alias(model_aliases, f"{desired_name}:latest", canonical_name, strict=friendly_alias_strict)
+    register_model_alias(model_aliases, desired_name,
+                         canonical_name, strict=friendly_alias_strict)
+    register_model_alias(model_aliases, desired_name.lower(),
+                         canonical_name, strict=friendly_alias_strict)
+    register_model_alias(
+        model_aliases, f"{desired_name}:latest", canonical_name, strict=friendly_alias_strict)
     register_model_alias(
         model_aliases,
         f"{desired_name.lower()}:latest",
@@ -118,16 +129,22 @@ def register_model_entry(
     )
 
     if discovered:
-        register_model_alias(model_aliases, f"{source_name}/{desired_name}", canonical_name, strict=False)
-        register_model_alias(model_aliases, f"{source_name.lower()}/{desired_name.lower()}", canonical_name, strict=False)
-        register_model_alias(model_aliases, f"{source_name}:{desired_name}", canonical_name, strict=False)
-        register_model_alias(model_aliases, f"{source_name.lower()}:{desired_name.lower()}", canonical_name, strict=False)
+        register_model_alias(
+            model_aliases, f"{source_name}/{desired_name}", canonical_name, strict=False)
+        register_model_alias(
+            model_aliases, f"{source_name.lower()}/{desired_name.lower()}", canonical_name, strict=False)
+        register_model_alias(
+            model_aliases, f"{source_name}:{desired_name}", canonical_name, strict=False)
+        register_model_alias(
+            model_aliases, f"{source_name.lower()}:{desired_name.lower()}", canonical_name, strict=False)
 
     for alias in aliases:
         alias_text = str(alias).strip()
         if alias_text:
-            register_model_alias(model_aliases, alias_text, canonical_name, strict=friendly_alias_strict)
-            register_model_alias(model_aliases, alias_text.lower(), canonical_name, strict=friendly_alias_strict)
+            register_model_alias(model_aliases, alias_text,
+                                 canonical_name, strict=friendly_alias_strict)
+            register_model_alias(model_aliases, alias_text.lower(
+            ), canonical_name, strict=friendly_alias_strict)
 
     return canonical_name
 
@@ -176,27 +193,32 @@ class ProxyState:
 
             source_enabled = source_cfg.get("enable", True)
             if not isinstance(source_enabled, bool):
-                raise RuntimeError(f"source '{source_name}' enable must be a boolean")
+                raise RuntimeError(
+                    f"source '{source_name}' enable must be a boolean")
             if not source_enabled:
                 continue
 
             rule = normalize_source_rule(source_cfg.get("rule"))
             handler = get_rule_handler(rule)
-            base_url = str(source_cfg.get("base_url") or "").strip().rstrip("/")
+            base_url = str(source_cfg.get("base_url")
+                           or "").strip().rstrip("/")
             if not base_url:
                 raise RuntimeError(f"source '{source_name}' missing base_url")
 
             extra_headers = source_cfg.get("headers") or {}
             if not isinstance(extra_headers, dict):
-                raise RuntimeError(f"source '{source_name}' headers must be an object")
+                raise RuntimeError(
+                    f"source '{source_name}' headers must be an object")
 
             paths = source_cfg.get("paths") or {}
             if not isinstance(paths, dict):
-                raise RuntimeError(f"source '{source_name}' paths must be an object")
+                raise RuntimeError(
+                    f"source '{source_name}' paths must be an object")
 
             models = source_cfg.get("models") or {}
             if not isinstance(models, dict):
-                raise RuntimeError(f"source '{source_name}' models must be an object")
+                raise RuntimeError(
+                    f"source '{source_name}' models must be an object")
 
             merged_paths = {
                 key: str(paths.get(key) or default_path)
@@ -206,7 +228,8 @@ class ProxyState:
                 if path_key not in merged_paths:
                     merged_paths[str(path_key)] = str(path_value)
 
-            rule_config = handler.normalize_rule_config(source_cfg.get("rule_config"))
+            rule_config = handler.normalize_rule_config(
+                source_cfg.get("rule_config"))
 
             source_entry = {
                 "name": source_name,
@@ -217,7 +240,8 @@ class ProxyState:
                 "headers": merge_source_headers(
                     str(source_cfg.get("api_key") or ""),
                     extra_headers,
-                    use_bearer_auth=bool(rule_config.get("use_bearer_auth", True)),
+                    use_bearer_auth=bool(
+                        rule_config.get("use_bearer_auth", True)),
                 ),
                 "timeout": float(source_cfg.get("timeout", 300.0)),
                 "rule_config": rule_config,
@@ -225,10 +249,12 @@ class ProxyState:
                 "auto_discover_models": False,
                 "models_discovered": False,
             }
-            source_entry["auto_discover_models"] = handler.supports_model_discovery(source_entry)
+            source_entry["auto_discover_models"] = handler.supports_model_discovery(
+                source_entry)
             source_registry[source_name] = source_entry
             source_order.append(source_name)
-            has_auto_discovery_source = has_auto_discovery_source or source_entry["auto_discover_models"]
+            has_auto_discovery_source = has_auto_discovery_source or source_entry[
+                "auto_discover_models"]
 
             if not models and not source_entry["auto_discover_models"]:
                 raise RuntimeError(
@@ -238,17 +264,21 @@ class ProxyState:
             for model_name, model_cfg in models.items():
                 if isinstance(model_cfg, str):
                     model_cfg = {"upstream_model": model_cfg}
-                register_model_entry(model_registry, model_aliases, source_name, model_name, model_cfg)
+                register_model_entry(
+                    model_registry, model_aliases, source_name, model_name, model_cfg)
 
         default_model = str(raw.get("default_model") or "").strip()
         if default_model:
-            default_model = model_aliases.get(default_model, model_aliases.get(default_model.lower(), default_model))
+            default_model = model_aliases.get(
+                default_model, model_aliases.get(default_model.lower(), default_model))
             if default_model not in model_registry and not has_auto_discovery_source:
-                raise RuntimeError(f"default_model '{default_model}' not found in config")
+                raise RuntimeError(
+                    f"default_model '{default_model}' not found in config")
         elif model_registry:
             default_model = next(iter(model_registry))
         elif not has_auto_discovery_source:
-            raise RuntimeError("config must provide at least one model or one source with automatic model discovery")
+            raise RuntimeError(
+                "config must provide at least one model or one source with automatic model discovery")
 
         return {
             "sources": source_registry,
@@ -319,7 +349,8 @@ class ProxyState:
             try:
                 await self.discover_source_models(source_cfg)
             except Exception as exc:
-                self.logger.warning("model discovery failed source=%s error=%s", source_name, exc)
+                self.logger.warning(
+                    "model discovery failed source=%s error=%s", source_name, exc)
                 discovery_errors.append(exc)
         return discovery_errors
 
@@ -334,7 +365,8 @@ class ProxyState:
                 return model_cfg
             if discovery_errors and not self.model_registry:
                 self.raise_discovery_error(discovery_errors[0])
-            raise HTTPException(status_code=404, detail=f"default_model '{self.default_model}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"default_model '{self.default_model}' not found")
 
         if self.model_registry:
             return next(iter(self.model_registry.values()))
@@ -357,7 +389,8 @@ class ProxyState:
             try:
                 await self.discover_source_models(source_cfg)
             except Exception as exc:
-                self.logger.warning("model discovery failed source=%s error=%s", source_name, exc)
+                self.logger.warning(
+                    "model discovery failed source=%s error=%s", source_name, exc)
                 discovery_errors.append(exc)
                 continue
 
@@ -376,10 +409,12 @@ class ProxyState:
 
         if discovery_errors and not self.model_registry:
             self.raise_discovery_error(discovery_errors[0])
-        raise HTTPException(status_code=404, detail=f"model '{local_name}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"model '{local_name}' not found")
 
     @staticmethod
     def raise_discovery_error(exc: Exception) -> None:
         if isinstance(exc, HTTPException):
             raise exc
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))

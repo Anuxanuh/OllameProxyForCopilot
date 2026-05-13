@@ -10,8 +10,10 @@ from fastapi import APIRouter, FastAPI, Request
 from proxy_core.request_utils import safe_text_full, safe_text_preview
 
 
-TRACE_PATHS = {"/api/show", "/api/chat", "/api/generate", "/api/tags", "/api/version", "/v1/chat/completions"}
-TRACE_BODY_PATHS = {"/api/show", "/api/chat", "/api/generate", "/v1/chat/completions"}
+TRACE_PATHS = {"/api/show", "/api/chat", "/api/generate",
+               "/api/tags", "/api/version", "/v1/chat/completions"}
+TRACE_BODY_PATHS = {"/api/show", "/api/chat",
+                    "/api/generate", "/v1/chat/completions"}
 
 
 def register_request_trace_middleware(app: FastAPI, logger) -> None:
@@ -24,7 +26,8 @@ def register_request_trace_middleware(app: FastAPI, logger) -> None:
         start = time.perf_counter()
 
         user_agent = request.headers.get("user-agent")
-        request_id = request.headers.get("x-request-id") or request.headers.get("x-ms-client-request-id")
+        request_id = request.headers.get(
+            "x-request-id") or request.headers.get("x-ms-client-request-id")
         github_request_id = request.headers.get("x-github-request-id")
 
         if method == "POST" and path in TRACE_BODY_PATHS:
@@ -68,7 +71,8 @@ def register_request_trace_middleware(app: FastAPI, logger) -> None:
             response = await call_next(request)
         except Exception:
             duration_ms = (time.perf_counter() - start) * 1000
-            logger.exception("response %s %s status=500 duration_ms=%.2f", method, path, duration_ms)
+            logger.exception(
+                "response %s %s status=500 duration_ms=%.2f", method, path, duration_ms)
             raise
 
         duration_ms = (time.perf_counter() - start) * 1000

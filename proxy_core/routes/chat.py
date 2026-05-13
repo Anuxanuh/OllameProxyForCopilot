@@ -31,7 +31,8 @@ async def _cap_copilot_sse_stream(
         return
 
     file_trace_logger = logging.getLogger("ollama_proxy.filetrace")
-    request_id = request.headers.get("x-request-id") or request.headers.get("x-ms-client-request-id")
+    request_id = request.headers.get(
+        "x-request-id") or request.headers.get("x-ms-client-request-id")
     github_request_id = request.headers.get("x-github-request-id")
 
     total_bytes = 0
@@ -74,7 +75,8 @@ async def _cap_copilot_sse_stream(
                 "v1/chat/completions copilot sse delta-keys model=%s stream_id=%s keys=%s function_call_chars=%s",
                 model,
                 message_id,
-                json.dumps(delta_key_counts, ensure_ascii=False, sort_keys=True),
+                json.dumps(delta_key_counts,
+                           ensure_ascii=False, sort_keys=True),
                 total_function_call_chars,
             )
 
@@ -113,7 +115,8 @@ async def _cap_copilot_sse_stream(
             "has_finish_reason": False,
         }
         try:
-            line = raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else str(raw)
+            line = raw.decode("utf-8") if isinstance(raw,
+                                                     (bytes, bytearray)) else str(raw)
         except Exception:
             local["parse_failed"] = True
             return raw, local
@@ -148,7 +151,8 @@ async def _cap_copilot_sse_stream(
                 for delta_key in delta.keys():
                     key_text = str(delta_key)
                     local_delta_keys = local["delta_keys"]
-                    local_delta_keys[key_text] = int(local_delta_keys.get(key_text, 0)) + 1
+                    local_delta_keys[key_text] = int(
+                        local_delta_keys.get(key_text, 0)) + 1
                 content = delta.get("content")
                 if isinstance(content, str) and content:
                     has_meaningful_delta = True
@@ -224,7 +228,8 @@ async def _cap_copilot_sse_stream(
 
     async for chunk in stream:
         event_index += 1
-        raw_chunk_bytes = len(chunk) if isinstance(chunk, (bytes, bytearray)) else len(str(chunk).encode("utf-8", errors="ignore"))
+        raw_chunk_bytes = len(chunk) if isinstance(chunk, (bytes, bytearray)) else len(
+            str(chunk).encode("utf-8", errors="ignore"))
 
         # Drop bulky fields (tool_calls/reasoning/usage...) from SSE for Copilot compatibility.
         chunk, local_stats = _minify_sse_chunk(chunk)
@@ -239,16 +244,19 @@ async def _cap_copilot_sse_stream(
             emitted_choice_event = True
 
         for key, count in (local_stats.get("delta_keys") or {}).items():
-            delta_key_counts[str(key)] = int(delta_key_counts.get(str(key), 0)) + int(count)
+            delta_key_counts[str(key)] = int(
+                delta_key_counts.get(str(key), 0)) + int(count)
 
         emitted_content_chars += int(local_stats["content_chars"])
         total_tool_call_items += int(local_stats["tool_call_items"])
         total_function_call_chars += int(local_stats["function_call_chars"])
         removed_reasoning_chars += int(local_stats["removed_reasoning_chars"])
 
-        out_chunk_bytes = len(chunk) if isinstance(chunk, (bytes, bytearray)) else len(str(chunk).encode("utf-8", errors="ignore"))
+        out_chunk_bytes = len(chunk) if isinstance(chunk, (bytes, bytearray)) else len(
+            str(chunk).encode("utf-8", errors="ignore"))
         try:
-            event_payload = chunk.decode("utf-8", errors="replace") if isinstance(chunk, (bytes, bytearray)) else str(chunk)
+            event_payload = chunk.decode(
+                "utf-8", errors="replace") if isinstance(chunk, (bytes, bytearray)) else str(chunk)
         except Exception:
             event_payload = "<decode_failed>"
 
@@ -267,11 +275,13 @@ async def _cap_copilot_sse_stream(
             local_stats.get("content_chars"),
             local_stats.get("tool_call_items"),
             local_stats.get("function_call_chars"),
-            json.dumps(local_stats.get("delta_keys") or {}, ensure_ascii=False, sort_keys=True),
+            json.dumps(local_stats.get("delta_keys") or {},
+                       ensure_ascii=False, sort_keys=True),
             safe_text_full(event_payload.encode("utf-8", errors="replace")),
         )
 
-        chunk_len = len(chunk) if isinstance(chunk, (bytes, bytearray)) else len(str(chunk).encode("utf-8", errors="ignore"))
+        chunk_len = len(chunk) if isinstance(chunk, (bytes, bytearray)) else len(
+            str(chunk).encode("utf-8", errors="ignore"))
         total_bytes += chunk_len
         total_chunks += 1
         yield chunk
@@ -295,7 +305,8 @@ def create_chat_router(state: ProxyState, logger) -> APIRouter:
         if body.get("system"):
             messages.insert(0, {"role": "system", "content": body["system"]})
 
-        payload: Dict[str, Any] = {"model": model_cfg["upstream_model"], "messages": messages}
+        payload: Dict[str, Any] = {
+            "model": model_cfg["upstream_model"], "messages": messages}
         flatten_options(body, payload)
         payload["stream"] = True
 
@@ -350,9 +361,11 @@ def create_chat_router(state: ProxyState, logger) -> APIRouter:
         model = model_cfg["name"]
         messages = body.get("messages", [])
         if not isinstance(messages, list):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="messages must be a list")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="messages must be a list")
 
-        payload: Dict[str, Any] = {"model": model_cfg["upstream_model"], "messages": messages}
+        payload: Dict[str, Any] = {
+            "model": model_cfg["upstream_model"], "messages": messages}
         flatten_options(body, payload)
         payload["stream"] = True
         if "tools" in body:
@@ -394,7 +407,8 @@ def create_chat_router(state: ProxyState, logger) -> APIRouter:
                 completion_tokens = obj.get("eval_count", 0)
                 done_reason = str(obj.get("done_reason") or done_reason)
 
-        response_message: Dict[str, Any] = {"role": "assistant", "content": full_content}
+        response_message: Dict[str, Any] = {
+            "role": "assistant", "content": full_content}
         if reasoning_content:
             response_message["reasoning_content"] = reasoning_content
         if tool_calls:
@@ -434,7 +448,8 @@ def create_chat_router(state: ProxyState, logger) -> APIRouter:
             want_stream,
             len(body.get("messages") or []),
             request.headers.get("user-agent"),
-            request.headers.get("x-request-id") or request.headers.get("x-ms-client-request-id"),
+            request.headers.get(
+                "x-request-id") or request.headers.get("x-ms-client-request-id"),
             request.headers.get("x-github-request-id"),
         )
 

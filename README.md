@@ -15,6 +15,20 @@ pip install -r requirements.txt
 ```bash
 python ollama_proxy.py
 ```
+
+可选启动参数：
+
+| 参数              | 说明             | 默认值              |
+| ----------------- | ---------------- | ------------------- |
+| `--config <路径>` | 指定配置文件路径 | `proxy_config.json` |
+| `--port <端口>`   | 指定监听端口     | `11434`             |
+
+示例：
+
+```bash
+# 使用自定义配置和端口
+python ollama_proxy.py --config ./my_config.json --port 8080
+```
 4. VS Code Copilot 中设置 Ollama 地址为：
 ```
 http://127.0.0.1:11434
@@ -127,34 +141,34 @@ http://127.0.0.1:11434
 
 ## 规则类型
 
-| 规则 | 自动发现模型 | 说明 |
-|------|-------------|------|
-| `openai` | ✅ 自动请求 `/models` | 完整 OpenAI API 兼容 |
-| `openai_compatible_partial` | ❌ 需手写 `models` | 部分兼容 OpenAI |
-| `anthropic` | ✅ 自动请求 `/models` | Anthropic Messages API |
-| `deepseek_anthropic` | ✅ 读 DeepSeek `/models` | DeepSeek 走 Anthropic 路径 |
-| `deepseek_openai` | ✅ 读 DeepSeek `/models` | DeepSeek 走 OpenAI 路径 |
+| 规则                        | 自动发现模型            | 说明                       |
+| --------------------------- | ----------------------- | -------------------------- |
+| `openai`                    | ✅ 自动请求 `/models`    | 完整 OpenAI API 兼容       |
+| `openai_compatible_partial` | ❌ 需手写 `models`       | 部分兼容 OpenAI            |
+| `anthropic`                 | ✅ 自动请求 `/models`    | Anthropic Messages API     |
+| `deepseek_anthropic`        | ✅ 读 DeepSeek `/models` | DeepSeek 走 Anthropic 路径 |
+| `deepseek_openai`           | ✅ 读 DeepSeek `/models` | DeepSeek 走 OpenAI 路径    |
 
 > `deepseek` 是 `deepseek_anthropic` 的兼容别名；`openai_aliyun` 是 `openai_compatible_partial` 的兼容别名。
 
 ## 支持接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/version` | 版本查询 |
-| GET | `/api/tags` | 模型列表 |
-| GET | `/api/models` | 模型列表 |
-| GET | `/api/models/{model}` | 模型详情 |
-| POST | `/api/models/{model}` | 模型详情（兼容旧调用） |
-| POST | `/api/generate` | 文本生成 |
-| POST | `/api/chat` | 对话 |
-| POST | `/api/embed` | 嵌入 |
-| POST | `/api/embeddings` | 嵌入 |
-| GET | `/api/ps` | 进程状态 |
-| POST | `/api/show` | 模型信息 |
-| GET | `/v1/models` | 模型列表（OpenAI 风格） |
-| GET | `/v1/models/{model}` | 模型详情（OpenAI 风格） |
-| POST | `/v1/chat/completions` | 对话（OpenAI 风格） |
+| 方法 | 路径                   | 说明                    |
+| ---- | ---------------------- | ----------------------- |
+| GET  | `/api/version`         | 版本查询                |
+| GET  | `/api/tags`            | 模型列表                |
+| GET  | `/api/models`          | 模型列表                |
+| GET  | `/api/models/{model}`  | 模型详情                |
+| POST | `/api/models/{model}`  | 模型详情（兼容旧调用）  |
+| POST | `/api/generate`        | 文本生成                |
+| POST | `/api/chat`            | 对话                    |
+| POST | `/api/embed`           | 嵌入                    |
+| POST | `/api/embeddings`      | 嵌入                    |
+| GET  | `/api/ps`              | 进程状态                |
+| POST | `/api/show`            | 模型信息                |
+| GET  | `/v1/models`           | 模型列表（OpenAI 风格） |
+| GET  | `/v1/models/{model}`   | 模型详情（OpenAI 风格） |
+| POST | `/v1/chat/completions` | 对话（OpenAI 风格）     |
 
 ## 高级配置
 
@@ -182,12 +196,12 @@ http://127.0.0.1:11434
 }
 ```
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `supports_embeddings` | bool | `true` | 是否允许 `/api/embed` 和 `/api/embeddings`（`false` 时返回 501） |
-| `supports_tools` | bool | 规则自定 | 是否允许 tools 调用（`false` 时返回 501） |
-| `use_bearer_auth` | bool | `true`（anthropic 默认 `false`） | 是否将 `api_key` 转为 `Authorization: Bearer` |
-| `request_headers` | object | `{}` | 规则级附加请求头，支持 `{{api_key}}` 占位符 |
+| 字段                  | 类型   | 默认值                           | 说明                                                             |
+| --------------------- | ------ | -------------------------------- | ---------------------------------------------------------------- |
+| `supports_embeddings` | bool   | `true`                           | 是否允许 `/api/embed` 和 `/api/embeddings`（`false` 时返回 501） |
+| `supports_tools`      | bool   | 规则自定                         | 是否允许 tools 调用（`false` 时返回 501）                        |
+| `use_bearer_auth`     | bool   | `true`（anthropic 默认 `false`） | 是否将 `api_key` 转为 `Authorization: Bearer`                    |
+| `request_headers`     | object | `{}`                             | 规则级附加请求头，支持 `{{api_key}}` 占位符                      |
 
 ### 请求头合并规则
 

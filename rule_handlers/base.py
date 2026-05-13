@@ -29,14 +29,16 @@ class RuleHandler(ABC):
         merged = dict(self.default_rule_config)
         merged.update(raw_rule_config)
 
-        merged["supports_embeddings"] = bool(merged.get("supports_embeddings", True))
+        merged["supports_embeddings"] = bool(
+            merged.get("supports_embeddings", True))
         merged["supports_tools"] = bool(merged.get("supports_tools", False))
         merged["use_bearer_auth"] = bool(merged.get("use_bearer_auth", True))
 
         request_headers = merged.get("request_headers") or {}
         if not isinstance(request_headers, dict):
             raise RuntimeError("rule_config.request_headers must be an object")
-        merged["request_headers"] = {str(key): str(value) for key, value in request_headers.items()}
+        merged["request_headers"] = {str(key): str(
+            value) for key, value in request_headers.items()}
         return merged
 
     def supports_model_discovery(self, source_cfg: SourceConfig) -> bool:
@@ -96,7 +98,8 @@ def source_url(source_cfg: SourceConfig, path_key: str) -> str:
 def source_headers(source_cfg: SourceConfig) -> Dict[str, str]:
     headers = dict(source_cfg["headers"])
     for key, value in source_cfg.get("rule_config", {}).get("request_headers", {}).items():
-        resolved_value = str(value).replace("{{api_key}}", str(source_cfg.get("api_key") or ""))
+        resolved_value = str(value).replace(
+            "{{api_key}}", str(source_cfg.get("api_key") or ""))
         if resolved_value:
             headers[str(key)] = resolved_value
     return headers

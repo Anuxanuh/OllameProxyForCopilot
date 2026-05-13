@@ -24,7 +24,8 @@ SUPPORTED_SOURCE_RULES = set(RULE_HANDLER_REGISTRY)
 
 
 def normalize_source_rule(rule_name: str | None) -> str:
-    candidate = str(rule_name or RULE_OPENAI_COMPATIBLE_PARTIAL).strip().lower()
+    candidate = str(
+        rule_name or RULE_OPENAI_COMPATIBLE_PARTIAL).strip().lower()
     aliases = {
         "openai-compatible-partial": RULE_OPENAI_COMPATIBLE_PARTIAL,
         "openai_compatible_partial": RULE_OPENAI_COMPATIBLE_PARTIAL,
@@ -49,4 +50,5 @@ def get_rule_handler(rule_name: str) -> RuleHandler:
     try:
         return RULE_HANDLER_REGISTRY[rule_name]
     except KeyError as exc:
-        raise RuntimeError(f"handler not registered for source rule '{rule_name}'") from exc
+        raise RuntimeError(
+            f"handler not registered for source rule '{rule_name}'") from exc

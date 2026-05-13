@@ -1,3 +1,4 @@
+import argparse
 import logging
 from pathlib import Path
 from logging.handlers import TimedRotatingFileHandler
@@ -15,11 +16,13 @@ from proxy_core.routes import (
 
 app = FastAPI(title="Ollama-Compatible Proxy")
 
+
 def configure_logging() -> None:
     logs_dir = Path(__file__).with_name("Logs")
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s [%(name)s] %(message)s")
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
@@ -56,6 +59,16 @@ logger = logging.getLogger("ollama_proxy")
 CONFIG_PATH = Path(__file__).with_name("proxy_config.json")
 PORT = 11434
 OLLAMA_VERSION = "0.6.4"
+
+# Allow overriding CONFIG_PATH and PORT via command-line arguments.
+_arg_parser = argparse.ArgumentParser(description="Ollama-Compatible Proxy", add_help=False)
+_arg_parser.add_argument("--config", type=Path, default=None, help="Path to proxy config JSON")
+_arg_parser.add_argument("--port", type=int, default=None, help="Listen port")
+_cli_args, _ = _arg_parser.parse_known_args()
+if _cli_args.config:
+    CONFIG_PATH = _cli_args.config
+if _cli_args.port:
+    PORT = _cli_args.port
 
 STATE = ProxyState(CONFIG_PATH, logger)
 

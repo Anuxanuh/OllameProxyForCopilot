@@ -65,7 +65,8 @@ async def parse_request_json(
     if not raw:
         if allow_empty:
             return {}
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="request body is empty")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="request body is empty")
 
     try:
         body = json.loads(raw)
@@ -77,14 +78,17 @@ async def parse_request_json(
             alt = None
         if isinstance(alt, dict):
             body = alt
-            logger.info("json fallback ast.literal_eval accepted path=%s", request.url.path)
+            logger.info(
+                "json fallback ast.literal_eval accepted path=%s", request.url.path)
         else:
-            logger.warning("json parse failed path=%s body=%s", request.url.path, safe_text_preview(raw))
+            logger.warning("json parse failed path=%s body=%s",
+                           request.url.path, safe_text_preview(raw))
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="invalid JSON body",
             )
 
     if not isinstance(body, dict):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JSON body must be an object")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="JSON body must be an object")
     return body

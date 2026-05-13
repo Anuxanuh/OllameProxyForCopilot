@@ -15,6 +15,20 @@ pip install -r requirements.txt
 ```bash
 python ollama_proxy.py
 ```
+
+Optional startup arguments:
+
+| Argument          | Description         | Default             |
+| ----------------- | ------------------- | ------------------- |
+| `--config <path>` | Path to config file | `proxy_config.json` |
+| `--port <port>`   | Listen port         | `11434`             |
+
+Examples:
+
+```bash
+# Use custom config and port
+python ollama_proxy.py --config ./my_config.json --port 8080
+```
 4. Set the Ollama address in VS Code Copilot to:
 ```
 http://127.0.0.1:11434
@@ -127,34 +141,34 @@ Via OpenAI-compatible path:
 
 ## Rule Types
 
-| Rule | Auto Model Discovery | Description |
-|------|---------------------|-------------|
-| `openai` | ✅ Queries `/models` | Fully OpenAI API compatible |
-| `openai_compatible_partial` | ❌ Must write `models` | Partially OpenAI compatible |
-| `anthropic` | ✅ Queries `/models` | Anthropic Messages API |
-| `deepseek_anthropic` | ✅ Reads DeepSeek `/models` | DeepSeek via Anthropic path |
-| `deepseek_openai` | ✅ Reads DeepSeek `/models` | DeepSeek via OpenAI path |
+| Rule                        | Auto Model Discovery       | Description                 |
+| --------------------------- | -------------------------- | --------------------------- |
+| `openai`                    | ✅ Queries `/models`        | Fully OpenAI API compatible |
+| `openai_compatible_partial` | ❌ Must write `models`      | Partially OpenAI compatible |
+| `anthropic`                 | ✅ Queries `/models`        | Anthropic Messages API      |
+| `deepseek_anthropic`        | ✅ Reads DeepSeek `/models` | DeepSeek via Anthropic path |
+| `deepseek_openai`           | ✅ Reads DeepSeek `/models` | DeepSeek via OpenAI path    |
 
 > `deepseek` is a backward-compatible alias for `deepseek_anthropic`; `openai_aliyun` is an alias for `openai_compatible_partial`.
 
 ## Supported Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/version` | Version info |
-| GET | `/api/tags` | Model list |
-| GET | `/api/models` | Model list |
-| GET | `/api/models/{model}` | Model details |
-| POST | `/api/models/{model}` | Model details (legacy compat) |
-| POST | `/api/generate` | Text generation |
-| POST | `/api/chat` | Chat completion |
-| POST | `/api/embed` | Embedding |
-| POST | `/api/embeddings` | Embedding |
-| GET | `/api/ps` | Process status |
-| POST | `/api/show` | Model info |
-| GET | `/v1/models` | Model list (OpenAI style) |
-| GET | `/v1/models/{model}` | Model details (OpenAI style) |
-| POST | `/v1/chat/completions` | Chat (OpenAI style) |
+| Method | Path                   | Description                   |
+| ------ | ---------------------- | ----------------------------- |
+| GET    | `/api/version`         | Version info                  |
+| GET    | `/api/tags`            | Model list                    |
+| GET    | `/api/models`          | Model list                    |
+| GET    | `/api/models/{model}`  | Model details                 |
+| POST   | `/api/models/{model}`  | Model details (legacy compat) |
+| POST   | `/api/generate`        | Text generation               |
+| POST   | `/api/chat`            | Chat completion               |
+| POST   | `/api/embed`           | Embedding                     |
+| POST   | `/api/embeddings`      | Embedding                     |
+| GET    | `/api/ps`              | Process status                |
+| POST   | `/api/show`            | Model info                    |
+| GET    | `/v1/models`           | Model list (OpenAI style)     |
+| GET    | `/v1/models/{model}`   | Model details (OpenAI style)  |
+| POST   | `/v1/chat/completions` | Chat (OpenAI style)           |
 
 ## Advanced Configuration
 
@@ -182,12 +196,12 @@ Each source can override rule defaults via `rule_config`:
 }
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `supports_embeddings` | bool | `true` | Whether to allow `/api/embed` and `/api/embeddings` (returns 501 if `false`) |
-| `supports_tools` | bool | Rule-defined | Whether to allow `tools` in requests (returns 501 if `false`) |
-| `use_bearer_auth` | bool | `true` (`false` for anthropic) | Whether to convert `api_key` to `Authorization: Bearer` |
-| `request_headers` | object | `{}` | Rule-level extra headers; supports `{{api_key}}` placeholder |
+| Field                 | Type   | Default                        | Description                                                                  |
+| --------------------- | ------ | ------------------------------ | ---------------------------------------------------------------------------- |
+| `supports_embeddings` | bool   | `true`                         | Whether to allow `/api/embed` and `/api/embeddings` (returns 501 if `false`) |
+| `supports_tools`      | bool   | Rule-defined                   | Whether to allow `tools` in requests (returns 501 if `false`)                |
+| `use_bearer_auth`     | bool   | `true` (`false` for anthropic) | Whether to convert `api_key` to `Authorization: Bearer`                      |
+| `request_headers`     | object | `{}`                           | Rule-level extra headers; supports `{{api_key}}` placeholder                 |
 
 ### Header Merge Rules
 

@@ -16,9 +16,11 @@ from .base import make_http_error, source_headers
 RULE_DEEPSEEK_ANTHROPIC = "deepseek_anthropic"
 _THINKING_CACHE_LIMIT = 256
 _DEEPSEEK_THINKING_CACHE: Dict[tuple[str, str, str], list[Dict[str, Any]]] = {}
-_DEEPSEEK_LAST_TRIM_STATE: Dict[tuple[str, str, str], tuple[int, int, int]] = {}
+_DEEPSEEK_LAST_TRIM_STATE: Dict[tuple[str,
+                                      str, str], tuple[int, int, int]] = {}
 logger = logging.getLogger("ollama_proxy.deepseek_anthropic")
-_DEEPSEEK_CACHE_PATH = Path(__file__).resolve().parents[1] / "Logs" / "deepseek_thinking_cache.json"
+_DEEPSEEK_CACHE_PATH = Path(__file__).resolve(
+).parents[1] / "Logs" / "deepseek_thinking_cache.json"
 
 _DEEPSEEK_CONTEXT_FALLBACK = {
     "deepseek-v4-flash": 1_000_000,
@@ -60,7 +62,8 @@ def _cache_key(source_cfg: SourceConfig, model: str, messages: Any = None) -> tu
     """Cache key: (source_name, model, message_context_hash)."""
     source_name = str(source_cfg.get("name") or "")
     model_name = str(model)
-    context_hash = _get_messages_context_hash(messages) if messages else "empty"
+    context_hash = _get_messages_context_hash(
+        messages) if messages else "empty"
     return (source_name, model_name, context_hash)
 
 
@@ -83,7 +86,8 @@ def _load_persistent_cache() -> None:
     try:
         raw = json.loads(_DEEPSEEK_CACHE_PATH.read_text(encoding="utf-8"))
     except Exception as exc:
-        logger.warning("deepseek anthropic thinking cache load failed path=%s error=%s", _DEEPSEEK_CACHE_PATH, exc)
+        logger.warning(
+            "deepseek anthropic thinking cache load failed path=%s error=%s", _DEEPSEEK_CACHE_PATH, exc)
         return
 
     if not isinstance(raw, dict):
@@ -101,7 +105,8 @@ def _load_persistent_cache() -> None:
             content = entry.get("content")
             if not isinstance(content, list):
                 continue
-            normalized_entries.append({"assistant_text": assistant_text, "content": content})
+            normalized_entries.append(
+                {"assistant_text": assistant_text, "content": content})
         if normalized_entries:
             _DEEPSEEK_THINKING_CACHE[cache_key] = normalized_entries
 
@@ -110,10 +115,12 @@ def _save_persistent_cache() -> None:
     _DEEPSEEK_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     serializable: Dict[str, Any] = {}
     for cache_key, entries in _DEEPSEEK_THINKING_CACHE.items():
-        serializable[_serialize_cache_key(cache_key)] = entries[-_THINKING_CACHE_LIMIT:]
+        serializable[_serialize_cache_key(
+            cache_key)] = entries[-_THINKING_CACHE_LIMIT:]
 
     temp_path = _DEEPSEEK_CACHE_PATH.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(serializable, ensure_ascii=False), encoding="utf-8")
+    temp_path.write_text(json.dumps(
+        serializable, ensure_ascii=False), encoding="utf-8")
     temp_path.replace(_DEEPSEEK_CACHE_PATH)
 
 
@@ -224,11 +231,13 @@ class DeepSeekAnthropicRuleHandler(AnthropicRuleHandler):
         if not isinstance(messages, list):
             return
 
-        entries = _DEEPSEEK_THINKING_CACHE.get(_cache_key(source_cfg, model, messages))
+        entries = _DEEPSEEK_THINKING_CACHE.get(
+            _cache_key(source_cfg, model, messages))
         if not entries:
             unresolved = _assistant_without_thinking_indices(messages)
             if unresolved:
-                _trim_unreplayable_history(payload, source_cfg, model, unresolved)
+                _trim_unreplayable_history(
+                    payload, source_cfg, model, unresolved)
             return
 
         normalized_entries: list[Dict[str, Any]] = []
@@ -291,7 +300,8 @@ class DeepSeekAnthropicRuleHandler(AnthropicRuleHandler):
         if miss_count:
             unresolved = _assistant_without_thinking_indices(messages)
             if unresolved:
-                _trim_unreplayable_history(payload, source_cfg, model, unresolved)
+                _trim_unreplayable_history(
+                    payload, source_cfg, model, unresolved)
 
             logger.info(
                 "deepseek anthropic thinking inject partial source=%s model=%s injected=%s misses=%s cache_size=%s",
@@ -351,7 +361,8 @@ class DeepSeekAnthropicRuleHandler(AnthropicRuleHandler):
         for item in items:
             if not isinstance(item, dict):
                 continue
-            model_name = str(item.get("id") or item.get("name") or "").strip().lower()
+            model_name = str(item.get("id") or item.get(
+                "name") or "").strip().lower()
             if not model_name:
                 continue
             meta: Dict[str, Any] = {"upstream": dict(item)}
